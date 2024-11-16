@@ -103,3 +103,69 @@ func (r *TenderRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Tender,
 	}
 	return &t, nil
 }
+
+func (r *TenderRepo) Update(ctx context.Context, tender *models.Tender) error {
+	query := `
+		UPDATE tenders
+		SET client_id = $1, title = $2, description = $3, deadline = $4, budget = $5, status = $6, file_url = $7, updated_at = $8
+		WHERE id = $9
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		tender.ClientID,
+		tender.Title,
+		tender.Description,
+		tender.Deadline,
+		tender.Budget,
+		tender.Status,
+		tender.FileURL,
+		tender.UpdatedAt,
+		tender.ID,
+	)
+	return err
+}
+
+func (r *TenderRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	query := `
+		DELETE FROM tenders
+		WHERE id = $1
+	`
+	_, err := r.db.ExecContext(ctx, query, id)
+	return err
+}
+
+func (r *TenderRepo) ListByClientID(ctx context.Context, clientID uuid.UUID) ([]models.Tender, error) {
+	query := `
+		SELECT id, client_id, title, description, deadline, budget, status, file_url, created_at, updated_at
+		FROM tenders
+		WHERE client_id = $1
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tenders []models.Tender
+	for rows.Next() {
+		var t models.Tender
+		err := rows.Scan(
+			&t.ID,
+			&t.ClientID,
+			&t.Title,
+			&t.Description,
+			&t.Deadline,
+			&t.Budget,
+			&t.Status,
+			&t.FileURL,
+			&t.CreatedAt,
+			&t.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		tenders = append(tenders, t)
+	}
+	return tenders, nil
+}
