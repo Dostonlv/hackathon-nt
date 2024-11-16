@@ -1,7 +1,7 @@
 .PHONY: run_db run test build
 
 run_db:
-	docker-compose up db -d
+	docker compose up db -d
 
 run:
 	docker-compose up --build
