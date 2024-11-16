@@ -4,19 +4,13 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/Dostonlv/hackathon-nt/config"
 	_ "github.com/lib/pq"
 )
 
-type Config struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
-}
 
-func NewConnection(config Config) (*sql.DB, error) {
+
+func NewConnection(config config.Config) (*sql.DB, error) {
 	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		config.Host,

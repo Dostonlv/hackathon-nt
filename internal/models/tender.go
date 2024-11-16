@@ -8,6 +8,14 @@ import (
 
 type TenderStatus string
 
+func (s TenderStatus) IsValid() bool {
+	switch s {
+	case TenderStatusOpen, TenderStatusClosed, TenderStatusAwarded:
+		return true
+	}
+	return false
+}
+
 const (
 	TenderStatusOpen    TenderStatus = "open"
 	TenderStatusClosed  TenderStatus = "closed"

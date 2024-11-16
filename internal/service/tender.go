@@ -84,14 +84,12 @@ func (s *TenderService) CreateTender(ctx context.Context, input CreateTenderInpu
 	return tender, nil
 }
 
-
-
 func (s *TenderService) ListTenders(ctx context.Context, filters repository.TenderFilters) ([]models.Tender, error) {
 	// Validate status if provided
 	if filters.Status != "" {
 		validStatuses := map[string]bool{
 			string(models.TenderStatusOpen):    true,
-			string(models.TenderStatusClosed): true,
+			string(models.TenderStatusClosed):  true,
 			string(models.TenderStatusAwarded): true,
 		}
 		if !validStatuses[filters.Status] {
@@ -105,7 +103,6 @@ func (s *TenderService) ListTenders(ctx context.Context, filters repository.Tend
 	})
 }
 
-
 func (s *TenderService) GetTenderByID(ctx context.Context, id uuid.UUID) (*models.Tender, error) {
 	if id == uuid.Nil {
 		return nil, errors.Join(ErrInvalidInput, errors.New("invalid tender ID"))
@@ -113,8 +110,119 @@ func (s *TenderService) GetTenderByID(ctx context.Context, id uuid.UUID) (*model
 
 	tender, err := s.repo.GetByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrTenderNotFound
+		}
 		return nil, err
 	}
 
 	return tender, nil
+}
+
+type UpdateTenderInput struct {
+	ID          uuid.UUID
+	ClientID    uuid.UUID // for authorization
+	Title       *string
+	Description *string
+	Deadline    *time.Time
+	Budget      *float64
+	FileURL     *string
+	Status      *string
+}
+
+func (s *TenderService) UpdateTender(ctx context.Context, input UpdateTenderInput) (*models.Tender, error) {
+	// Validate input
+	if input.ID == uuid.Nil {
+		return nil, errors.Join(ErrInvalidInput, errors.New("invalid tender ID"))
+	}
+
+	// Get existing tender
+	tender, err := s.repo.GetByID(ctx, input.ID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrTenderNotFound
+		}
+		return nil, err
+	}
+
+	// Check authorization
+	if tender.ClientID != input.ClientID {
+		return nil, ErrUnauthorized
+	}
+
+	// Update fields if provided
+	if input.Title != nil {
+		if *input.Title == "" {
+			return nil, errors.Join(ErrInvalidInput, errors.New("title cannot be empty"))
+		}
+		tender.Title = *input.Title
+	}
+
+	if input.Description != nil {
+		if *input.Description == "" {
+			return nil, errors.Join(ErrInvalidInput, errors.New("description cannot be empty"))
+		}
+		tender.Description = *input.Description
+	}
+
+	if input.Deadline != nil {
+		if input.Deadline.Before(time.Now()) {
+			return nil, errors.Join(ErrInvalidInput, errors.New("deadline must be in the future"))
+		}
+		tender.Deadline = *input.Deadline
+	}
+
+	if input.Budget != nil {
+		if *input.Budget <= 0 {
+			return nil, errors.Join(ErrInvalidInput, errors.New("budget must be greater than zero"))
+		}
+		tender.Budget = *input.Budget
+	}
+
+	if input.FileURL != nil {
+		tender.FileURL = input.FileURL
+	}
+
+	if input.Status != nil {
+		newStatus := models.TenderStatus(*input.Status)
+		if !newStatus.IsValid() {
+			return nil, errors.Join(ErrInvalidInput, errors.New("invalid status"))
+		}
+		tender.Status = newStatus
+	}
+
+	tender.UpdatedAt = time.Now()
+
+	// Save updates
+	err = s.repo.Update(ctx, tender)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil,ErrTenderNotFound
+		}
+		return nil,err
+	}
+	return tender, nil
+}
+
+// DeleteTender deletes a tender
+func (s *TenderService) DeleteTender(ctx context.Context, tenderID, clientID uuid.UUID) error {
+	if tenderID == uuid.Nil {
+		return errors.Join(ErrInvalidInput, errors.New("invalid tender ID"))
+	}
+
+	// Get existing tender
+	tender, err := s.repo.GetByID(ctx, tenderID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrTenderNotFound
+		}
+		return err
+	}
+
+	// Check authorization
+	if tender.ClientID != clientID {
+		return ErrUnauthorized
+	}
+
+	return s.repo.Delete(ctx, tenderID)
 }
