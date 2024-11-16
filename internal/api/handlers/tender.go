@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Dostonlv/hackathon-nt/internal/repository"
+	"github.com/Dostonlv/hackathon-nt/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/Dostonlv/hackathon-nt/internal/service"
 )
 
 type TenderHandler struct {
@@ -14,6 +15,9 @@ type TenderHandler struct {
 }
 
 func NewTenderHandler(tenderService *service.TenderService) *TenderHandler {
+	if tenderService == nil {
+		panic("tenderService cannot be nil")
+	}
 	return &TenderHandler{
 		tenderService: tenderService,
 	}
@@ -53,7 +57,7 @@ func (h *TenderHandler) CreateTender(c *gin.Context) {
 }
 
 func (h *TenderHandler) ListTenders(c *gin.Context) {
-	filters := service.TenderFilters{
+	filters := repository.TenderFilters{
 		Status: c.Query("status"),
 		Search: c.Query("search"),
 	}

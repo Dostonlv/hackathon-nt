@@ -6,6 +6,7 @@ import (
 
 	"github.com/Dostonlv/hackathon-nt/internal/models"
 	"github.com/Dostonlv/hackathon-nt/internal/repository"
+	"github.com/google/uuid"
 )
 
 type TenderRepo struct {
@@ -75,4 +76,30 @@ func (r *TenderRepo) List(ctx context.Context, filters repository.TenderFilters)
 		tenders = append(tenders, t)
 	}
 	return tenders, nil
+}
+
+func (r *TenderRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Tender, error) {
+	query := `
+		SELECT id, client_id, title, description, deadline, budget, status, file_url, created_at, updated_at
+		FROM tenders
+		WHERE id = $1
+	`
+
+	var t models.Tender
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&t.ID,
+		&t.ClientID,
+		&t.Title,
+		&t.Description,
+		&t.Deadline,
+		&t.Budget,
+		&t.Status,
+		&t.FileURL,
+		&t.CreatedAt,
+		&t.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
