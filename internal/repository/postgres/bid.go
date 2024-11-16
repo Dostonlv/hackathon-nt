@@ -19,10 +19,10 @@ func NewBidRepo(db *sql.DB) *BidRepo {
 
 func (r *BidRepo) Create(ctx context.Context, bid *models.Bid) error {
 	query := `
-        INSERT INTO bids (
-            id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    `
+		INSERT INTO bids (
+			id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
 	_, err := r.db.ExecContext(ctx, query,
 		bid.ID,
 		bid.TenderID,
@@ -37,14 +37,43 @@ func (r *BidRepo) Create(ctx context.Context, bid *models.Bid) error {
 	return err
 }
 
+func (r *BidRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Bid, error) {
+	query := `
+		SELECT id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
+		FROM bids
+		WHERE id = $1
+	`
+	row := r.db.QueryRowContext(ctx, query, id)
+
+	var b models.Bid
+	err := row.Scan(
+		&b.ID,
+		&b.TenderID,
+		&b.ContractorID,
+		&b.Price,
+		&b.DeliveryTime,
+		&b.Comments,
+		&b.Status,
+		&b.CreatedAt,
+		&b.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &b, nil
+}
+
 func (r *BidRepo) ListByTenderID(ctx context.Context, tenderID uuid.UUID, filters repository.BidFilters) ([]models.Bid, error) {
 	query := `
-        SELECT id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
-        FROM bids
-        WHERE tender_id = $1
-        AND ($2::float8 IS NULL OR price >= $2)
-        AND ($3::float8 IS NULL OR price <= $3)
-    `
+		SELECT id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
+		FROM bids
+		WHERE tender_id = $1
+		AND ($2::float8 IS NULL OR price >= $2)
+		AND ($3::float8 IS NULL OR price <= $3)
+	`
 
 	if filters.SortBy != "" {
 		query += " ORDER BY " + filters.SortBy
@@ -79,4 +108,57 @@ func (r *BidRepo) ListByTenderID(ctx context.Context, tenderID uuid.UUID, filter
 		bids = append(bids, b)
 	}
 	return bids, nil
+}
+
+func (r *BidRepo) ListByContractorID(ctx context.Context, contractorID uuid.UUID) ([]models.Bid, error) {
+	query := `
+		SELECT id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
+		FROM bids
+		WHERE contractor_id = $1
+	`
+	rows, err := r.db.QueryContext(ctx, query, contractorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bids []models.Bid
+	for rows.Next() {
+		var b models.Bid
+		err := rows.Scan(
+			&b.ID,
+			&b.TenderID,
+			&b.ContractorID,
+			&b.Price,
+			&b.DeliveryTime,
+			&b.Comments,
+			&b.Status,
+			&b.CreatedAt,
+			&b.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		bids = append(bids, b)
+	}
+	return bids, nil
+}
+
+func (r *BidRepo) Update(ctx context.Context, bid *models.Bid) error {
+	query := `
+		UPDATE bids
+		SET tender_id = $2, contractor_id = $3, price = $4, delivery_time = $5, comments = $6, status = $7, updated_at = $8
+		WHERE id = $1
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		bid.ID,
+		bid.TenderID,
+		bid.ContractorID,
+		bid.Price,
+		bid.DeliveryTime,
+		bid.Comments,
+		bid.Status,
+		bid.UpdatedAt,
+	)
+	return err
 }

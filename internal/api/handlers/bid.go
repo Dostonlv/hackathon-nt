@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
+	"github.com/Dostonlv/hackathon-nt/internal/repository"
 	"github.com/Dostonlv/hackathon-nt/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -61,9 +63,15 @@ func (h *BidHandler) ListBids(c *gin.Context) {
 		return
 	}
 
-	filters := service.BidFilters{
-		Status: c.Query("status"),
-		Search: c.Query("search"),
+	filters := repository.BidFilters{
+		Status:      c.Query("status"),
+		Search:      c.Query("search"),
+		MinPrice:    parseFloatQuery(c, "min_price"),
+		MaxPrice:    parseFloatQuery(c, "max_price"),
+		MinDelivery: parseIntQuery(c, "min_delivery_time"),
+		MaxDelivery: parseIntQuery(c, "max_delivery_time"),
+		SortBy:      c.Query("sort_by"),
+		SortOrder:   c.Query("sort_order"),
 	}
 
 	bids, err := h.bidService.ListBids(c.Request.Context(), tenderID, filters)
@@ -73,5 +81,22 @@ func (h *BidHandler) ListBids(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, bids)
-	
+}
+
+func parseFloatQuery(c *gin.Context, key string) *float64 {
+	if value := c.Query(key); value != "" {
+		if floatValue, err := strconv.ParseFloat(value, 64); err == nil {
+			return &floatValue
+		}
+	}
+	return nil
+}
+
+func parseIntQuery(c *gin.Context, key string) *int {
+	if value := c.Query(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return &intValue
+		}
+	}
+	return nil
 }

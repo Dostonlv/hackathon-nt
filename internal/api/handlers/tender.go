@@ -70,7 +70,3 @@ func (h *TenderHandler) ListTenders(c *gin.Context) {
 
 	c.JSON(http.StatusOK, tenders)
 }
-
-
-
-func ()

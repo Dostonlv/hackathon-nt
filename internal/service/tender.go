@@ -197,9 +197,9 @@ func (s *TenderService) UpdateTender(ctx context.Context, input UpdateTenderInpu
 	err = s.repo.Update(ctx, tender)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil,ErrTenderNotFound
+			return nil, ErrTenderNotFound
 		}
-		return nil,err
+		return nil, err
 	}
 	return tender, nil
 }
