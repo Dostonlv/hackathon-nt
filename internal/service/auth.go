@@ -32,7 +32,7 @@ type RegisterInput struct {
 }
 
 type LoginInput struct {
-	Email    string `json:"email" validate:"required,email"`
+	Username string `json:"username" validate:"required"`
 	Password string `json:"password" validate:"required"`
 }
 
@@ -42,13 +42,18 @@ type AuthResponse struct {
 }
 
 func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*AuthResponse, error) {
+	// Validate input
+	if input.Username == "" || input.Email == "" {
+		return nil, errors.New("username or email cannot be empty")
+	}
+
 	// Check if user exists
 	exists, err := s.userRepo.ExistsByEmail(ctx, input.Email)
 	if err != nil {
 		return nil, err
 	}
 	if exists {
-		return nil, errors.New("user with this email already exists")
+		return nil, errors.New("email already exists")
 	}
 
 	// Hash password
@@ -85,8 +90,12 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*AuthR
 }
 
 func (s *AuthService) Login(ctx context.Context, input LoginInput) (*AuthResponse, error) {
-	user, err := s.userRepo.GetByEmail(ctx, input.Email)
+	user, err := s.userRepo.GetByUsername(ctx, input.Username)
 	if err != nil {
+		if err.Error() == "user not found" {
+			return nil, errors.New("user not found")
+		}
+
 		return nil, errors.New("invalid credentials")
 	}
 

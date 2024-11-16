@@ -1,0 +1,233 @@
+definitions:
+  handlers.ErrorResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  models.Tender:
+    properties:
+      budget:
+        type: number
+      client_id:
+        type: string
+      created_at:
+        type: string
+      deadline:
+        type: string
+      description:
+        type: string
+      file_url:
+        type: string
+      id:
+        type: string
+      status:
+        $ref: '#/definitions/models.TenderStatus'
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.TenderStatus:
+    enum:
+    - open
+    - closed
+    - awarded
+    type: string
+    x-enum-varnames:
+    - TenderStatusOpen
+    - TenderStatusClosed
+    - TenderStatusAwarded
+  models.User:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      role:
+        $ref: '#/definitions/models.UserRole'
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
+  models.UserRole:
+    enum:
+    - client
+    - contractor
+    type: string
+    x-enum-varnames:
+    - RoleClient
+    - RoleContractor
+  service.AuthResponse:
+    properties:
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+    type: object
+  service.LoginInput:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  service.RegisterInput:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/models.UserRole'
+        enum:
+        - client
+        - contractor
+      username:
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - email
+    - password
+    - role
+    - username
+    type: object
+info:
+  contact: {}
+  description: Backend
+  title: hackathon
+  version: "1.0"
+paths:
+  /api/tenders:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Create a new tender with the provided details and a PDF file
+      parameters:
+      - description: Title of the tender
+        in: formData
+        name: title
+        required: true
+        type: string
+      - description: Description of the tender
+        in: formData
+        name: description
+        required: true
+        type: string
+      - description: Deadline for the tender
+        in: formData
+        name: deadline
+        required: true
+        type: string
+      - description: Budget for the tender
+        in: formData
+        name: budget
+        required: true
+        type: number
+      - description: PDF file for the tender
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Tender'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new tender
+      tags:
+      - tenders
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Login a user with the provided credentials
+      parameters:
+      - description: Login Input
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.LoginInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Login a user
+      tags:
+      - auth
+  /register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user with the provided details
+      parameters:
+      - description: Register Input
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.RegisterInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/service.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Register a new user
+      tags:
+      - auth
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

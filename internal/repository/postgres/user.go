@@ -91,6 +91,31 @@ func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*models.User, 
 	return user, nil
 }
 
+func (r *UserRepo) GetByUsername(ctx context.Context, username string) (*models.User, error) {
+	user := &models.User{}
+	query := `
+        SELECT id, username, email, password_hash, role, created_at, updated_at
+        FROM users
+        WHERE username = $1
+    `
+	err := r.db.QueryRowContext(ctx, query, username).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Role,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, errors.New("user not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 func (r *UserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	var exists bool
 	query := `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)`

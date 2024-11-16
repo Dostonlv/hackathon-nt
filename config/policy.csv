@@ -1,0 +1,4 @@
+p, admin, /api/*, *
+p, user, /api/users, GET
+p, user, /api/users/:id, GET
+p, client, /api/tenders, POST
