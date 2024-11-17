@@ -1,0 +1,2870 @@
+<config/config.go>
+package config
+
+type Config struct {
+	Host     string
+	Port     int
+	User     string
+	Password string
+	DBName   string
+	SSLMode  string
+}
+
+</config/config.go>
+
+<docker-compose.yml>
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    environment:
+      - DB_HOST=localhost
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=tender_db
+      - JWT_SECRET=your-secret-key
+      - PORT=8080
+    volumes:
+      - .:/app
+
+  db:
+    image: postgres:13
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=tender_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+</docker-compose.yml>
+
+<migrations/02_create_tenders.down.sql>
+DROP INDEX IF EXISTS idx_tenders_client_id;
+DROP INDEX IF EXISTS idx_tenders_status;
+DROP TABLE IF EXISTS tenders;
+DROP TYPE IF EXISTS tender_status;
+
+DROP INDEX IF EXISTS idx_bids_tender_id;
+DROP INDEX IF EXISTS idx_bids_contractor_id;
+DROP TABLE IF EXISTS bids;
+
+DROP INDEX IF EXISTS idx_notifications_user_id;
+DROP TABLE IF EXISTS notifications;
+</migrations/02_create_tenders.down.sql>
+
+<migrations/01_create_users.up.sql>
+CREATE TYPE user_role AS ENUM ('client', 'contractor');
+
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    role user_role NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_email ON users(email);
+</migrations/01_create_users.up.sql>
+
+<migrations/01_create_users.down.sql>
+DROP INDEX IF EXISTS idx_users_username;
+DROP INDEX IF EXISTS idx_users_email;
+DROP TABLE IF EXISTS users;
+DROP TYPE IF EXISTS user_role;
+</migrations/01_create_users.down.sql>
+
+<migrations/02_create_tenders.up.sql>
+CREATE TYPE tender_status AS ENUM ('open', 'closed', 'awarded');
+
+CREATE TABLE tenders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL REFERENCES users(id),
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    deadline TIMESTAMP WITH TIME ZONE NOT NULL,
+    budget DECIMAL(15, 2) NOT NULL,
+    status tender_status DEFAULT 'open',
+    attachment VARCHAR(512),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT budget_positive CHECK (budget > 0)
+);
+
+CREATE INDEX idx_tenders_client_id ON tenders(client_id);
+CREATE INDEX idx_tenders_status ON tenders(status);
+
+CREATE TABLE bids (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tender_id UUID NOT NULL REFERENCES tenders(id),
+    contractor_id UUID NOT NULL REFERENCES users(id),
+    price DECIMAL(15, 2) NOT NULL,
+    delivery_time INTEGER NOT NULL, -- in days
+    comments TEXT,
+    status VARCHAR(50) DEFAULT 'open',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT price_positive CHECK (price > 0),
+    CONSTRAINT delivery_time_positive CHECK (delivery_time > 0)
+);
+
+CREATE INDEX idx_bids_tender_id ON bids(tender_id);
+CREATE INDEX idx_bids_contractor_id ON bids(contractor_id);
+
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    message TEXT NOT NULL,
+    relation_id UUID,
+    type VARCHAR(50) NOT NULL,
+    read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+
+</migrations/02_create_tenders.up.sql>
+
+<README.md>
+[![GitHub Workflow Status (branch)](https://img.shields.io/github/actions/workflow/status/golang-migrate/migrate/ci.yaml?branch=master)](https://github.com/golang-migrate/migrate/actions/workflows/ci.yaml?query=branch%3Amaster)
+[![GoDoc](https://pkg.go.dev/badge/github.com/golang-migrate/migrate)](https://pkg.go.dev/github.com/golang-migrate/migrate/v4)
+[![Coverage Status](https://img.shields.io/coveralls/github/golang-migrate/migrate/master.svg)](https://coveralls.io/github/golang-migrate/migrate?branch=master)
+[![packagecloud.io](https://img.shields.io/badge/deb-packagecloud.io-844fec.svg)](https://packagecloud.io/golang-migrate/migrate?filter=debs)
+[![Docker Pulls](https://img.shields.io/docker/pulls/migrate/migrate.svg)](https://hub.docker.com/r/migrate/migrate/)
+![Supported Go Versions](https://img.shields.io/badge/Go-1.20%2C%201.21-lightgrey.svg)
+[![GitHub Release](https://img.shields.io/github/release/golang-migrate/migrate.svg)](https://github.com/golang-migrate/migrate/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/golang-migrate/migrate/v4)](https://goreportcard.com/report/github.com/golang-migrate/migrate/v4)
+
+# migrate
+
+__Database migrations written in Go. Use as [CLI](#cli-usage) or import as [library](#use-in-your-go-project).__
+
+* Migrate reads migrations from [sources](#migration-sources)
+   and applies them in correct order to a [database](#databases).
+* Drivers are "dumb", migrate glues everything together and makes sure the logic is bulletproof.
+   (Keeps the drivers lightweight, too.)
+* Database drivers don't assume things or try to correct user input. When in doubt, fail.
+
+Forked from [mattes/migrate](https://github.com/mattes/migrate)
+
+## Databases
+
+Database drivers run migrations. [Add a new database?](database/driver.go)
+
+* [PostgreSQL](database/postgres)
+* [PGX v4](database/pgx)
+* [PGX v5](database/pgx/v5)
+* [Redshift](database/redshift)
+* [Ql](database/ql)
+* [Cassandra / ScyllaDB](database/cassandra)
+* [SQLite](database/sqlite)
+* [SQLite3](database/sqlite3) ([todo #165](https://github.com/mattes/migrate/issues/165))
+* [SQLCipher](database/sqlcipher)
+* [MySQL / MariaDB](database/mysql)
+* [Neo4j](database/neo4j)
+* [MongoDB](database/mongodb)
+* [CrateDB](database/crate) ([todo #170](https://github.com/mattes/migrate/issues/170))
+* [Shell](database/shell) ([todo #171](https://github.com/mattes/migrate/issues/171))
+* [Google Cloud Spanner](database/spanner)
+* [CockroachDB](database/cockroachdb)
+* [YugabyteDB](database/yugabytedb)
+* [ClickHouse](database/clickhouse)
+* [Firebird](database/firebird)
+* [MS SQL Server](database/sqlserver)
+* [RQLite](database/rqlite)
+
+### Database URLs
+
+Database connection strings are specified via URLs. The URL format is driver dependent but generally has the form: `dbdriver://username:password@host:port/dbname?param1=true&param2=false`
+
+Any [reserved URL characters](https://en.wikipedia.org/wiki/Percent-encoding#Percent-encoding_reserved_characters) need to be escaped. Note, the `%` character also [needs to be escaped](https://en.wikipedia.org/wiki/Percent-encoding#Percent-encoding_the_percent_character)
+
+Explicitly, the following characters need to be escaped:
+`!`, `#`, `$`, `%`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `/`, `:`, `;`, `=`, `?`, `@`, `[`, `]`
+
+It's easiest to always run the URL parts of your DB connection URL (e.g. username, password, etc) through an URL encoder. See the example Python snippets below:
+
+```bash
+$ python3 -c 'import urllib.parse; print(urllib.parse.quote(input("String to encode: "), ""))'
+String to encode: FAKEpassword!#$%&'()*+,/:;=?@[]
+FAKEpassword%21%23%24%25%26%27%28%29%2A%2B%2C%2F%3A%3B%3D%3F%40%5B%5D
+$ python2 -c 'import urllib; print urllib.quote(raw_input("String to encode: "), "")'
+String to encode: FAKEpassword!#$%&'()*+,/:;=?@[]
+FAKEpassword%21%23%24%25%26%27%28%29%2A%2B%2C%2F%3A%3B%3D%3F%40%5B%5D
+$
+```
+
+## Migration Sources
+
+Source drivers read migrations from local or remote sources. [Add a new source?](source/driver.go)
+
+* [Filesystem](source/file) - read from filesystem
+* [io/fs](source/iofs) - read from a Go [io/fs](https://pkg.go.dev/io/fs#FS)
+* [Go-Bindata](source/go_bindata) - read from embedded binary data ([jteeuwen/go-bindata](https://github.com/jteeuwen/go-bindata))
+* [pkger](source/pkger) - read from embedded binary data ([markbates/pkger](https://github.com/markbates/pkger))
+* [GitHub](source/github) - read from remote GitHub repositories
+* [GitHub Enterprise](source/github_ee) - read from remote GitHub Enterprise repositories
+* [Bitbucket](source/bitbucket) - read from remote Bitbucket repositories
+* [Gitlab](source/gitlab) - read from remote Gitlab repositories
+* [AWS S3](source/aws_s3) - read from Amazon Web Services S3
+* [Google Cloud Storage](source/google_cloud_storage) - read from Google Cloud Platform Storage
+
+## CLI usage
+
+* Simple wrapper around this library.
+* Handles ctrl+c (SIGINT) gracefully.
+* No config search paths, no config files, no magic ENV var injections.
+
+__[CLI Documentation](cmd/migrate)__
+
+### Basic usage
+
+```bash
+$ migrate -source file://path/to/migrations -database postgres://localhost:5432/database up 2
+```
+
+### Docker usage
+
+```bash
+$ docker run -v {{ migration dir }}:/migrations --network host migrate/migrate
+    -path=/migrations/ -database postgres://localhost:5432/database up 2
+```
+
+## Use in your Go project
+
+* API is stable and frozen for this release (v3 & v4).
+* Uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies.
+* To help prevent database corruptions, it supports graceful stops via `GracefulStop chan bool`.
+* Bring your own logger.
+* Uses `io.Reader` streams internally for low memory overhead.
+* Thread-safe and no goroutine leaks.
+
+__[Go Documentation](https://pkg.go.dev/github.com/golang-migrate/migrate/v4)__
+
+```go
+import (
+    "github.com/golang-migrate/migrate/v4"
+    _ "github.com/golang-migrate/migrate/v4/database/postgres"
+    _ "github.com/golang-migrate/migrate/v4/source/github"
+)
+
+func main() {
+    m, err := migrate.New(
+        "github://mattes:personal-access-token@mattes/migrate_test",
+        "postgres://localhost:5432/database?sslmode=enable")
+    m.Steps(2)
+}
+```
+
+Want to use an existing database client?
+
+```go
+import (
+    "database/sql"
+    _ "github.com/lib/pq"
+    "github.com/golang-migrate/migrate/v4"
+    "github.com/golang-migrate/migrate/v4/database/postgres"
+    _ "github.com/golang-migrate/migrate/v4/source/file"
+)
+
+func main() {
+    db, err := sql.Open("postgres", "postgres://localhost:5432/database?sslmode=enable")
+    driver, err := postgres.WithInstance(db, &postgres.Config{})
+    m, err := migrate.NewWithDatabaseInstance(
+        "file:///migrations",
+        "postgres", driver)
+    m.Up() // or m.Step(2) if you want to explicitly set the number of migrations to run
+}
+```
+
+## Getting started
+
+Go to [getting started](GETTING_STARTED.md)
+
+## Tutorials
+
+* [CockroachDB](database/cockroachdb/TUTORIAL.md)
+* [PostgreSQL](database/postgres/TUTORIAL.md)
+
+(more tutorials to come)
+
+## Migration files
+
+Each migration has an up and down migration. [Why?](FAQ.md#why-two-separate-files-up-and-down-for-a-migration)
+
+```bash
+1481574547_create_users_table.up.sql
+1481574547_create_users_table.down.sql
+```
+
+[Best practices: How to write migrations.](MIGRATIONS.md)
+
+## Coming from another db migration tool?
+
+Check out [migradaptor](https://github.com/musinit/migradaptor/).
+*Note: migradaptor is not affliated or supported by this project*
+
+## Versions
+
+Version | Supported? | Import | Notes
+--------|------------|--------|------
+**master** | :white_check_mark: | `import "github.com/golang-migrate/migrate/v4"` | New features and bug fixes arrive here first |
+**v4** | :white_check_mark: | `import "github.com/golang-migrate/migrate/v4"` | Used for stable releases |
+**v3** | :x: | `import "github.com/golang-migrate/migrate"` (with package manager) or `import "gopkg.in/golang-migrate/migrate.v3"` (not recommended) | **DO NOT USE** - No longer supported |
+
+## Development and Contributing
+
+Yes, please! [`Makefile`](Makefile) is your friend,
+read the [development guide](CONTRIBUTING.md).
+
+Also have a look at the [FAQ](FAQ.md).
+
+---
+
+Looking for alternatives? [https://awesome-go.com/#database](https://awesome-go.com/#database).
+
+</README.md>
+
+<cmd/server/main.go>
+package main
+
+import (
+	"database/sql"
+	"log"
+
+	"github.com/Dostonlv/hackathon-nt/internal/api"
+	"github.com/Dostonlv/hackathon-nt/internal/repository/postgres"
+	"github.com/Dostonlv/hackathon-nt/internal/service"
+	"github.com/Dostonlv/hackathon-nt/internal/utils"
+	"github.com/casbin/casbin/v2"
+	fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
+	_ "github.com/lib/pq"
+)
+
+func initializeCasbin() (*casbin.Enforcer, error) {
+	// Create the adapter
+	a := fileadapter.NewAdapter("config/policy.csv")
+
+	// Initialize the enforcer
+	enforcer, err := casbin.NewEnforcer("config/model.conf", a)
+	if err != nil {
+		return nil, err
+	}
+
+	// Load the policy from DB
+	err = enforcer.LoadPolicy()
+	if err != nil {
+		return nil, err
+	}
+
+	return enforcer, nil
+}
+
+func main() {
+	// Database connection
+	connStr := "postgres://postgres:postgres@localhost:5433/tender_db?sslmode=disable"
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Initialize JWT util
+	jwtSecret := "secreeet"
+	jwtUtil := utils.NewJWTUtil(jwtSecret)
+
+	// Initialize Casbin
+	enforcer, err := initializeCasbin()
+	if err != nil {
+		log.Fatal("Failed to initialize Casbin: ", err)
+	}
+
+	// Add some basic policies
+	enforcer.AddPolicy("admin", "/api/*", "*")
+	enforcer.AddPolicy("user", "/api/users", "GET")
+	enforcer.AddPolicy("user", "/api/users/:id", "GET")
+
+	// Save the policies back to storage
+	err = enforcer.SavePolicy()
+	if err != nil {
+		log.Fatal("Failed to save Casbin policies: ", err)
+	}
+
+	// Initialize repositories and services
+	userRepo := postgres.NewUserRepo(db)
+	authService := service.NewAuthService(userRepo, jwtUtil)
+	tenderService := service.NewTenderService(postgres.NewTenderRepo(db))
+	bidService := service.NewBidService(postgres.NewBidRepo(db), postgres.NewTenderRepo(db))
+	// Setup router with Casbin enforcer
+	router := api.SetupRouter(authService, tenderService, bidService, enforcer, jwtSecret)
+
+	// Start the server
+	log.Println("Server starting on :8888...")
+	if err := router.Run(":8888"); err != nil {
+		log.Fatal("Failed to start server: ", err)
+	}
+}
+
+</cmd/server/main.go>
+
+<internal/service/bid.go>
+package service
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/Dostonlv/hackathon-nt/internal/models"
+	"github.com/Dostonlv/hackathon-nt/internal/repository"
+	"github.com/google/uuid"
+)
+
+var (
+	ErrInvalidTender     = errors.New("invalid tender")
+	ErrInvalidContractor = errors.New("invalid contractor")
+	ErrBidNotFound       = errors.New("bid not found")
+)
+
+type CreateBidInput struct {
+	TenderID     uuid.UUID
+	ContractorID uuid.UUID
+	Price        float64
+	DeliveryTime int
+	Comments     string
+}
+
+type BidService struct {
+	bidRepo    repository.BidRepository
+	tenderRepo repository.TenderRepository
+}
+
+func NewBidService(bidRepo repository.BidRepository, tenderRepo repository.TenderRepository) *BidService {
+	return &BidService{
+		bidRepo:    bidRepo,
+		tenderRepo: tenderRepo,
+	}
+}
+
+func (s *BidService) CreateBid(ctx context.Context, input CreateBidInput) (*models.Bid, error) {
+	// Check if tender exists
+	tender, err := s.tenderRepo.GetByID(ctx, input.TenderID)
+	if err != nil {
+		return nil, err
+	}
+
+	if tender.Status != models.TenderStatusOpen {
+		return nil, ErrInvalidTender
+	}
+
+	bid := &models.Bid{
+		ID:           uuid.New(),
+		TenderID:     input.TenderID,
+		ContractorID: input.ContractorID,
+		Price:        input.Price,
+		DeliveryTime: input.DeliveryTime,
+		Comments:     input.Comments,
+		Status:       "open",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	if err := s.bidRepo.Create(ctx, bid); err != nil {
+		return nil, err
+	}
+
+	return bid, nil
+}
+
+func (s *BidService) ListBids(ctx context.Context, tenderID uuid.UUID, filters repository.BidFilters) ([]models.Bid, error) {
+	// Get bids with filters
+	bids, err := s.bidRepo.ListByTenderID(ctx, tenderID, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	return bids, nil
+}
+
+// Additional helper methods that might be useful
+
+func (s *BidService) GetBidByID(ctx context.Context, bidID uuid.UUID) (*models.Bid, error) {
+	bid, err := s.bidRepo.GetByID(ctx, bidID)
+	if err != nil {
+		return nil, err
+	}
+	if bid == nil {
+		return nil, ErrBidNotFound
+	}
+	return bid, nil
+}
+
+func (s *BidService) UpdateBidStatus(ctx context.Context, bidID uuid.UUID, status string) error {
+	bid, err := s.GetBidByID(ctx, bidID)
+	if err != nil {
+		return err
+	}
+
+	bid.Status = status
+	bid.UpdatedAt = time.Now()
+
+	return s.bidRepo.Update(ctx, bid)
+}
+func (s *BidService) GetBidsByContractorID(ctx context.Context, contractorID uuid.UUID) ([]models.Bid, error) {
+	bids, err := s.bidRepo.ListByContractorID(ctx, contractorID)
+	if err != nil {
+		return nil, err
+	}
+	return bids, nil
+}
+
+func (s *BidService) GetBidsByClientID(ctx context.Context, clientID, tenderID uuid.UUID) ([]models.Bid, error) {
+	bids, err := s.bidRepo.ListByClientTenderID(ctx, clientID, tenderID)
+	if err != nil {
+		return nil, err
+	}
+	return bids, nil
+}
+
+func (s *BidService) AwardBid(ctx context.Context, clientID, tenderID, bidID uuid.UUID) error {
+	// Check if tender exists
+	tender, err := s.tenderRepo.GetByID(ctx, tenderID)
+	if err != nil {
+		return err
+	}
+
+	if tender.Status != models.TenderStatusOpen {
+		return ErrInvalidTender
+	}
+
+	// Check if bid exists
+	bid, err := s.GetBidByID(ctx, bidID)
+	if err != nil {
+		return err
+	}
+
+	if bid.TenderID != tenderID {
+		return ErrInvalidTender
+	}
+
+	// Award the bid
+	err = s.bidRepo.AwardBidByTenderID(ctx, clientID, tenderID, bidID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *BidService) DeleteBidByContractorID(ctx context.Context, contractorID, bidID uuid.UUID) error {
+	// Check if bid exists
+	bid, err := s.GetBidByID(ctx, bidID)
+	if err != nil {
+		return err
+	}
+
+	if bid.ContractorID != contractorID {
+		return ErrInvalidContractor
+	}
+
+	// Delete the bid
+	err = s.bidRepo.DeleteByContractorID(ctx, contractorID, bidID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+</internal/service/bid.go>
+
+<internal/service/tender.go>
+package service
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/Dostonlv/hackathon-nt/internal/models"
+	"github.com/Dostonlv/hackathon-nt/internal/repository"
+	"github.com/google/uuid"
+)
+
+var (
+	ErrInvalidInput   = errors.New("invalid input parameters")
+	ErrTenderNotFound = errors.New("tender not found")
+	ErrUnauthorized   = errors.New("unauthorized action")
+)
+
+type TenderService struct {
+	repo repository.TenderRepository
+}
+
+func NewTenderService(repo repository.TenderRepository) *TenderService {
+	if repo == nil {
+		panic("tender repository cannot be nil")
+	}
+	return &TenderService{
+		repo: repo,
+	}
+}
+
+type CreateTenderInput struct {
+	ClientID    uuid.UUID
+	Title       string
+	Description string
+	Deadline    time.Time
+	Budget      float64
+	Attachment  *string
+}
+
+func (s *TenderService) validateCreateTenderInput(input CreateTenderInput) error {
+	if input.ClientID == uuid.Nil {
+		return errors.New("client ID is required")
+	}
+	if input.Title == "" {
+		return errors.New("title is required")
+	}
+	if input.Description == "" {
+		return errors.New("description is required")
+	}
+	if input.Deadline.Before(time.Now()) {
+		return errors.New("deadline must be in the future")
+	}
+	if input.Budget <= 0 {
+		return errors.New("budget must be greater than zero")
+	}
+	return nil
+}
+
+// CreateTender creates a new tender
+func (s *TenderService) CreateTender(ctx context.Context, input CreateTenderInput) (*models.Tender, error) {
+	tender := &models.Tender{
+		ID:          uuid.New(),
+		ClientID:    input.ClientID,
+		Title:       input.Title,
+		Description: input.Description,
+		Deadline:    input.Deadline,
+		Budget:      input.Budget,
+		Attachment:  input.Attachment,
+		Status:      models.TenderStatusOpen,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	err := s.repo.Create(ctx, tender)
+	if err != nil {
+		return nil, err
+	}
+
+	return tender, nil
+}
+
+func (s *TenderService) ListTenders(ctx context.Context, clientID uuid.UUID) ([]models.Tender, error) {
+	return s.repo.ListByClientID(ctx, clientID)
+}
+
+func (s *TenderService) GetTenderByID(ctx context.Context, id uuid.UUID) (*models.Tender, error) {
+	if id == uuid.Nil {
+		return nil, errors.Join(ErrInvalidInput, errors.New("tender not found"))
+	}
+
+	tender, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrTenderNotFound
+		}
+		return nil, err
+	}
+
+	return tender, nil
+}
+
+type UpdateTenderInput struct {
+	ID     uuid.UUID
+	Status *string
+}
+
+func (s *TenderService) UpdateTender(ctx context.Context, input UpdateTenderInput) (*models.Tender, error) {
+	// Validate input
+	if input.ID == uuid.Nil {
+		return nil, errors.Join(ErrInvalidInput, errors.New("invalid tender ID"))
+	}
+
+	// Get existing tender
+	tender, err := s.repo.GetByID(ctx, input.ID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrTenderNotFound
+		}
+		return nil, err
+	}
+
+	if input.Status != nil {
+		newStatus := models.TenderStatus(*input.Status)
+		if !newStatus.IsValid() {
+			return nil, errors.Join(ErrInvalidInput, errors.New("invalid status"))
+		}
+		tender.Status = newStatus
+	}
+
+	tender.UpdatedAt = time.Now()
+
+	// Save updates
+	err = s.repo.UpdateStatus(ctx, input.ID, string(tender.Status))
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrTenderNotFound
+		}
+		return nil, err
+	}
+	return tender, nil
+}
+
+// DeleteTender deletes a tender
+func (s *TenderService) DeleteTender(ctx context.Context, tenderID, clientID uuid.UUID) error {
+	if tenderID == uuid.Nil {
+		return errors.Join(ErrInvalidInput, errors.New("invalid tender ID"))
+	}
+
+	// Get existing tender
+	tender, err := s.repo.GetByID(ctx, tenderID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrTenderNotFound
+		}
+		return err
+	}
+
+	// Check authorization
+	if tender.ClientID != clientID {
+		return ErrUnauthorized
+	}
+
+	return s.repo.Delete(ctx, tenderID)
+}
+
+func (s *TenderService) ListTendersFiltering(ctx context.Context, filters repository.TenderFilters) ([]models.Tender, error) {
+	return s.repo.List(ctx, filters)
+}
+
+</internal/service/tender.go>
+
+<internal/service/notification.go>
+package service
+</internal/service/notification.go>
+
+<internal/service/auth.go>
+package service
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/Dostonlv/hackathon-nt/internal/models"
+	"github.com/Dostonlv/hackathon-nt/internal/repository"
+	"github.com/Dostonlv/hackathon-nt/internal/utils"
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+)
+
+type AuthService struct {
+	userRepo repository.UserRepository
+	jwtUtil  *utils.JWTUtil
+}
+
+func NewAuthService(userRepo repository.UserRepository, jwtUtil *utils.JWTUtil) *AuthService {
+	return &AuthService{
+		userRepo: userRepo,
+		jwtUtil:  jwtUtil,
+	}
+}
+
+type RegisterInput struct {
+	Username string          `json:"username" validate:"required,min=3,max=50"`
+	Email    string          `json:"email" validate:"required,email"`
+	Password string          `json:"password" validate:"required,min=8"`
+	Role     models.UserRole `json:"role" validate:"required,oneof=client contractor"`
+}
+
+type LoginInput struct {
+	Username string `json:"username" validate:"required"`
+	Password string `json:"password" validate:"required"`
+}
+
+type AuthResponse struct {
+	Token string      `json:"token"`
+	User  models.User `json:"user"`
+}
+
+func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*AuthResponse, error) {
+	// Validate input
+	if input.Username == "" || input.Email == "" {
+		return nil, errors.New("username or email cannot be empty")
+	}
+
+	// Check if user exists
+	exists, err := s.userRepo.ExistsByEmail(ctx, input.Email)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, errors.New("email already exists")
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+
+	user := &models.User{
+		ID:           uuid.New(),
+		Username:     input.Username,
+		Email:        input.Email,
+		PasswordHash: string(hashedPassword),
+		Role:         input.Role,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	// Save user
+	if err := s.userRepo.Create(ctx, user); err != nil {
+		return nil, err
+	}
+
+	// Generate JWT
+	token, err := s.jwtUtil.GenerateToken(user.ID, user.Role)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AuthResponse{
+		Token: token,
+		User:  *user,
+	}, nil
+}
+
+func (s *AuthService) Login(ctx context.Context, input LoginInput) (*AuthResponse, error) {
+	user, err := s.userRepo.GetByUsername(ctx, input.Username)
+	if err != nil {
+		if err.Error() == "user not found" {
+			return nil, errors.New("user not found")
+		}
+
+		return nil, errors.New("invalid credentials")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password)); err != nil {
+		return nil, errors.New("invalid credentials")
+	}
+
+	token, err := s.jwtUtil.GenerateToken(user.ID, user.Role)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AuthResponse{
+		Token: token,
+		User:  *user,
+	}, nil
+}
+
+</internal/service/auth.go>
+
+<internal/utils/jwt.go>
+package utils
+
+import (
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/Dostonlv/hackathon-nt/internal/models"
+	"github.com/golang-jwt/jwt"
+	"github.com/google/uuid"
+)
+
+type JWTUtil struct {
+	secretKey []byte
+}
+
+type Claims struct {
+	UserID uuid.UUID       `json:"user_id"`
+	Role   models.UserRole `json:"role"`
+	jwt.StandardClaims
+}
+
+func NewJWTUtil(secretKey string) *JWTUtil {
+	return &JWTUtil{
+		secretKey: []byte(secretKey),
+	}
+}
+
+func (j *JWTUtil) GenerateToken(userID uuid.UUID, role models.UserRole) (string, error) {
+	claims := Claims{
+		UserID: userID,
+		Role:   role,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
+			IssuedAt:  time.Now().Unix(),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(j.secretKey)
+}
+
+func (j *JWTUtil) ValidateToken(tokenString string) (*Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		return j.secretKey, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, errors.New("invalid token")
+}
+func (j *JWTUtil) ParseToken(tokenString string) (*Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		return j.secretKey, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, errors.New("invalid token")
+}
+
+func ParseToken(tokenString string, secretKey []byte) (*Claims, error) {
+	var jwtString string
+	if strings.HasPrefix(tokenString, "Bearer ") {
+		jwtString = strings.Split(tokenString, "Bearer ")[1]
+	} else {
+		jwtString = tokenString
+	}
+
+	token, err := jwt.ParseWithClaims(jwtString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		return secretKey, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, errors.New("invalid token")
+}
+
+</internal/utils/jwt.go>
+
+<internal/utils/validation.go>
+package utils
+</internal/utils/validation.go>
+
+<internal/models/bid.go>
+package models
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type Bid struct {
+	ID           uuid.UUID `json:"id" db:"id"`
+	TenderID     uuid.UUID `json:"tender_id" db:"tender_id"`
+	ContractorID uuid.UUID `json:"contractor_id" db:"contractor_id"`
+	Price        float64   `json:"price" db:"price"`
+	DeliveryTime int       `json:"delivery_time" db:"delivery_time"`
+	Comments     string    `json:"comments" db:"comments"`
+	Status       string    `json:"status" db:"status"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
+}
+
+</internal/models/bid.go>
+
+<internal/models/tender.go>
+package models
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type TenderStatus string
+
+func (s TenderStatus) IsValid() bool {
+	switch s {
+	case TenderStatusOpen, TenderStatusClosed, TenderStatusAwarded:
+		return true
+	}
+	return false
+}
+
+const (
+	TenderStatusOpen    TenderStatus = "open"
+	TenderStatusClosed  TenderStatus = "closed"
+	TenderStatusAwarded TenderStatus = "awarded"
+)
+
+type Tender struct {
+	ID          uuid.UUID    `json:"id" db:"id"`
+	ClientID    uuid.UUID    `json:"client_id" db:"client_id"`
+	Title       string       `json:"title" db:"title"`
+	Description string       `json:"description" db:"description"`
+	Deadline    time.Time    `json:"deadline" db:"deadline"`
+	Budget      float64      `json:"budget" db:"budget"`
+	Status      TenderStatus `json:"status" db:"status"`
+	Attachment  *string      `json:"attachment,omitempty" db:"attachment"`
+	CreatedAt   time.Time    `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at" db:"updated_at"`
+}
+
+</internal/models/tender.go>
+
+<internal/models/user.go>
+package models
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type UserRole string
+
+const (
+	RoleClient     UserRole = "client"
+	RoleContractor UserRole = "contractor"
+)
+
+type User struct {
+	ID           uuid.UUID `json:"id" db:"id"`
+	Username     string    `json:"username" db:"username"`
+	Email        string    `json:"email" db:"email"`
+	PasswordHash string    `json:"-" db:"password_hash"`
+	Role         UserRole  `json:"role" db:"role"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
+}
+
+</internal/models/user.go>
+
+<internal/models/notification.go>
+package models
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type Notification struct {
+	ID         uuid.UUID `json:"id" db:"id"`
+	UserID     uuid.UUID `json:"user_id" db:"user_id"`
+	Message    string    `json:"message" db:"message"`
+	RelationID uuid.UUID `json:"relation_id,omitempty" db:"relation_id"`
+	Type       string    `json:"type" db:"type"`
+	Read       bool      `json:"read" db:"read"`
+	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+}
+
+</internal/models/notification.go>
+
+<internal/repository/postgres/bid.go>
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+
+	"github.com/Dostonlv/hackathon-nt/internal/models"
+	"github.com/Dostonlv/hackathon-nt/internal/repository"
+	"github.com/google/uuid"
+)
+
+type BidRepo struct {
+	db *sql.DB
+}
+
+func NewBidRepo(db *sql.DB) *BidRepo {
+	return &BidRepo{db: db}
+}
+
+func (r *BidRepo) Create(ctx context.Context, bid *models.Bid) error {
+	query := `
+		INSERT INTO bids (
+			id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		bid.ID,
+		bid.TenderID,
+		bid.ContractorID,
+		bid.Price,
+		bid.DeliveryTime,
+		bid.Comments,
+		bid.Status,
+		bid.CreatedAt,
+		bid.UpdatedAt,
+	)
+	return err
+}
+
+func (r *BidRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Bid, error) {
+	query := `
+		SELECT id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
+		FROM bids
+		WHERE id = $1
+	`
+	row := r.db.QueryRowContext(ctx, query, id)
+
+	var b models.Bid
+	err := row.Scan(
+		&b.ID,
+		&b.TenderID,
+		&b.ContractorID,
+		&b.Price,
+		&b.DeliveryTime,
+		&b.Comments,
+		&b.Status,
+		&b.CreatedAt,
+		&b.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &b, nil
+}
+
+func (r *BidRepo) ListByTenderID(ctx context.Context, tenderID uuid.UUID, filters repository.BidFilters) ([]models.Bid, error) {
+	query := `
+		SELECT id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
+		FROM bids
+		WHERE tender_id = $1
+		AND ($2::float8 IS NULL OR price >= $2)
+		AND ($3::float8 IS NULL OR price <= $3)
+	`
+
+	if filters.SortBy != "" {
+		query += " ORDER BY " + filters.SortBy
+		if filters.SortOrder == "desc" {
+			query += " DESC"
+		}
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, tenderID, filters.MinPrice, filters.MaxPrice)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bids []models.Bid
+	for rows.Next() {
+		var b models.Bid
+		err := rows.Scan(
+			&b.ID,
+			&b.TenderID,
+			&b.ContractorID,
+			&b.Price,
+			&b.DeliveryTime,
+			&b.Comments,
+			&b.Status,
+			&b.CreatedAt,
+			&b.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		bids = append(bids, b)
+	}
+	return bids, nil
+}
+
+func (r *BidRepo) ListByContractorID(ctx context.Context, contractorID uuid.UUID) ([]models.Bid, error) {
+	query := `
+		SELECT id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
+		FROM bids
+		WHERE contractor_id = $1
+	`
+	rows, err := r.db.QueryContext(ctx, query, contractorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bids []models.Bid
+	for rows.Next() {
+		var b models.Bid
+		err := rows.Scan(
+			&b.ID,
+			&b.TenderID,
+			&b.ContractorID,
+			&b.Price,
+			&b.DeliveryTime,
+			&b.Comments,
+			&b.Status,
+			&b.CreatedAt,
+			&b.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		bids = append(bids, b)
+	}
+	return bids, nil
+}
+
+func (r *BidRepo) Update(ctx context.Context, bid *models.Bid) error {
+	query := `
+		UPDATE bids
+		SET tender_id = $2, contractor_id = $3, price = $4, delivery_time = $5, comments = $6, status = $7, updated_at = $8
+		WHERE id = $1
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		bid.ID,
+		bid.TenderID,
+		bid.ContractorID,
+		bid.Price,
+		bid.DeliveryTime,
+		bid.Comments,
+		bid.Status,
+		bid.UpdatedAt,
+	)
+	return err
+}
+
+func (r *BidRepo) ListByClientTenderID(ctx context.Context, clientID, tenderID uuid.UUID) ([]models.Bid, error) {
+	query := `
+		SELECT b.id, b.tender_id, b.contractor_id, b.price, b.delivery_time, b.comments, b.status, b.created_at, b.updated_at
+		FROM bids b
+		INNER JOIN tenders t ON b.tender_id = t.id
+		WHERE t.client_id = $1 AND b.tender_id = $2
+	`
+	rows, err := r.db.QueryContext(ctx, query, clientID, tenderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bids []models.Bid
+	for rows.Next() {
+		var b models.Bid
+		err := rows.Scan(
+			&b.ID,
+			&b.TenderID,
+			&b.ContractorID,
+			&b.Price,
+			&b.DeliveryTime,
+			&b.Comments,
+			&b.Status,
+			&b.CreatedAt,
+			&b.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		bids = append(bids, b)
+	}
+	return bids, nil
+}
+
+func (r *BidRepo) AwardBidByTenderID(ctx context.Context, clientID, tenderID, bidID uuid.UUID) error {
+	// Check if the tender belongs to the client
+	var existingClientID uuid.UUID
+	query := `
+		SELECT client_id
+		FROM tenders
+		WHERE id = $1
+	`
+	err := r.db.QueryRowContext(ctx, query, tenderID).Scan(&existingClientID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("tender not found")
+		}
+		return err
+	}
+
+	if existingClientID != clientID {
+		return fmt.Errorf("unauthorized: client does not own the tender")
+	}
+
+	// Award the bid
+	query = `
+		UPDATE bids
+		SET status = 'awarded'
+		WHERE id = $1 AND tender_id = $2
+	`
+	_, err = r.db.ExecContext(ctx, query, bidID, tenderID)
+	return err
+}
+
+func (r *BidRepo) DeleteByContractorID(ctx context.Context, contractorID, bidID uuid.UUID) error {
+	// Check if the bid belongs to the contractor
+	var existingContractorID uuid.UUID
+	query := `
+		SELECT contractor_id
+		FROM bids
+		WHERE id = $1
+	`
+	err := r.db.QueryRowContext(ctx, query, bidID).Scan(&existingContractorID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("bid not found")
+		}
+		return err
+	}
+
+	if existingContractorID != contractorID {
+		return fmt.Errorf("unauthorized: contractor does not own the bid")
+	}
+
+	// Delete the bid
+	query = `
+		DELETE FROM bids
+		WHERE id = $1 AND contractor_id = $2
+	`
+	_, err = r.db.ExecContext(ctx, query, bidID, contractorID)
+	return err
+}
+
+</internal/repository/postgres/bid.go>
+
+<internal/repository/postgres/tender.go>
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"time"
+
+	"github.com/Dostonlv/hackathon-nt/internal/models"
+	"github.com/Dostonlv/hackathon-nt/internal/repository"
+	"github.com/google/uuid"
+)
+
+type TenderRepo struct {
+	db *sql.DB
+}
+
+func NewTenderRepo(db *sql.DB) *TenderRepo {
+	return &TenderRepo{db: db}
+}
+
+func (r *TenderRepo) Create(ctx context.Context, tender *models.Tender) error {
+	query := `
+		INSERT INTO tenders (
+			id, client_id, title, description, deadline, budget, status, attachment, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		tender.ID,
+		tender.ClientID,
+		tender.Title,
+		tender.Description,
+		tender.Deadline,
+		tender.Budget,
+		tender.Status,
+		tender.Attachment,
+		tender.CreatedAt,
+		tender.UpdatedAt,
+	)
+	return err
+}
+
+func (r *TenderRepo) List(ctx context.Context, filters repository.TenderFilters) ([]models.Tender, error) {
+	query := `
+		SELECT id, client_id, title, description, deadline, budget, status, attachment, created_at, updated_at
+		FROM tenders
+		WHERE ($1 IS NULL OR (title ILIKE $1 OR description ILIKE $1))
+		AND ($2 IS NULL OR status = $2)
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, nullableString(filters.Search), nullableString(filters.Status))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tenders []models.Tender
+	for rows.Next() {
+		var t models.Tender
+		err := rows.Scan(
+			&t.ID,
+			&t.ClientID,
+			&t.Title,
+			&t.Description,
+			&t.Deadline,
+			&t.Budget,
+			&t.Status,
+			&t.Attachment,
+			&t.CreatedAt,
+			&t.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		tenders = append(tenders, t)
+	}
+	return tenders, nil
+}
+
+func nullableString(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return "%" + s + "%"
+}
+
+func (r *TenderRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Tender, error) {
+	query := `
+		SELECT id, client_id, title, description, deadline, budget, status, attachment, created_at, updated_at
+		FROM tenders
+		WHERE id = $1
+	`
+
+	var t models.Tender
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&t.ID,
+		&t.ClientID,
+		&t.Title,
+		&t.Description,
+		&t.Deadline,
+		&t.Budget,
+		&t.Status,
+		&t.Attachment,
+		&t.CreatedAt,
+		&t.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, repository.ErrNotFound
+		}
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (r *TenderRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	exists, err := r.exists(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return repository.ErrNotFound
+	}
+
+	query := `
+		UPDATE tenders
+		SET status = $1, updated_at = $2
+		WHERE id = $3
+	`
+	_, err = r.db.ExecContext(ctx, query, status, sql.NullTime{Time: time.Now(), Valid: true}, id)
+	return err
+}
+
+func (r *TenderRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	exists, err := r.exists(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return repository.ErrNotFound
+	}
+
+	query := `
+		DELETE FROM tenders
+		WHERE id = $1
+	`
+	_, err = r.db.ExecContext(ctx, query, id)
+	return err
+}
+
+func (r *TenderRepo) ListByClientID(ctx context.Context, clientID uuid.UUID) ([]models.Tender, error) {
+	query := `
+		SELECT id, client_id, title, description, deadline, budget, status, attachment, created_at, updated_at
+		FROM tenders
+		WHERE client_id = $1
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tenders []models.Tender
+	for rows.Next() {
+		var t models.Tender
+		err := rows.Scan(
+			&t.ID,
+			&t.ClientID,
+			&t.Title,
+			&t.Description,
+			&t.Deadline,
+			&t.Budget,
+			&t.Status,
+			&t.Attachment,
+			&t.CreatedAt,
+			&t.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		tenders = append(tenders, t)
+	}
+	return tenders, nil
+}
+
+func (r *TenderRepo) exists(ctx context.Context, id uuid.UUID) (bool, error) {
+	query := `SELECT 1 FROM tenders WHERE id = $1`
+	var exists bool
+	err := r.db.QueryRowContext(ctx, query, id).Scan(&exists)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+</internal/repository/postgres/tender.go>
+
+<internal/repository/postgres/user.go>
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+
+	"github.com/Dostonlv/hackathon-nt/internal/models"
+	"github.com/google/uuid"
+	"github.com/lib/pq"
+)
+
+type UserRepo struct {
+	db *sql.DB
+}
+
+func NewUserRepo(db *sql.DB) *UserRepo {
+	return &UserRepo{db: db}
+}
+
+func (r *UserRepo) Create(ctx context.Context, user *models.User) error {
+	query := `
+        INSERT INTO users (id, username, email, password_hash, role, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `
+	_, err := r.db.ExecContext(ctx, query,
+		user.ID,
+		user.Username,
+		user.Email,
+		user.PasswordHash,
+		user.Role,
+		user.CreatedAt,
+		user.UpdatedAt,
+	)
+	if err != nil {
+		if pgErr, ok := err.(*pq.Error); ok && pgErr.Code == "23505" {
+			return errors.New("user with this email already exists")
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *UserRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
+	user := &models.User{}
+	query := `
+        SELECT id, username, email, password_hash, role, created_at, updated_at
+        FROM users
+        WHERE id = $1
+    `
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Role,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, errors.New("user not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*models.User, error) {
+	user := &models.User{}
+	query := `
+        SELECT id, username, email, password_hash, role, created_at, updated_at
+        FROM users
+        WHERE email = $1
+    `
+	err := r.db.QueryRowContext(ctx, query, email).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Role,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, errors.New("user not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (r *UserRepo) GetByUsername(ctx context.Context, username string) (*models.User, error) {
+	user := &models.User{}
+	query := `
+        SELECT id, username, email, password_hash, role, created_at, updated_at
+        FROM users
+        WHERE username = $1
+    `
+	err := r.db.QueryRowContext(ctx, query, username).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Role,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, errors.New("user not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (r *UserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+	var exists bool
+	query := `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)`
+	err := r.db.QueryRowContext(ctx, query, email).Scan(&exists)
+	return exists, err
+}
+
+</internal/repository/postgres/user.go>
+
+<internal/repository/postgres/notification.go>
+package postgres
+
+import (
+	"context"
+	"database/sql"
+
+	"github.com/Dostonlv/hackathon-nt/internal/models"
+	"github.com/google/uuid"
+)
+
+type NotificationRepo struct {
+	db *sql.DB
+}
+
+func NewNotificationRepo(db *sql.DB) *NotificationRepo {
+	return &NotificationRepo{db: db}
+}
+
+func (r *NotificationRepo) Create(ctx context.Context, notification *models.Notification) error {
+	query := `
+        INSERT INTO notifications (id, user_id, message, relation_id, type, read, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `
+	_, err := r.db.ExecContext(ctx, query,
+		notification.ID,
+		notification.UserID,
+		notification.Message,
+		notification.RelationID,
+		notification.Type,
+		notification.Read,
+		notification.CreatedAt,
+	)
+	return err
+}
+
+func (r *NotificationRepo) ListByUserID(ctx context.Context, userID uuid.UUID) ([]models.Notification, error) {
+	query := `
+        SELECT id, user_id, message, relation_id, type, read, created_at
+        FROM notifications
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+    `
+
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var notifications []models.Notification
+	for rows.Next() {
+		var n models.Notification
+		err := rows.Scan(
+			&n.ID,
+			&n.UserID,
+			&n.Message,
+			&n.RelationID,
+			&n.Type,
+			&n.Read,
+			&n.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		notifications = append(notifications, n)
+	}
+	return notifications, nil
+}
+
+func (r *NotificationRepo) MarkAsRead(ctx context.Context, id uuid.UUID) error {
+	query := `UPDATE notifications SET read = true WHERE id = $1`
+	_, err := r.db.ExecContext(ctx, query, id)
+	return err
+}
+
+</internal/repository/postgres/notification.go>
+
+<internal/repository/postgres/connection.go>
+package postgres
+
+import (
+	"database/sql"
+	"fmt"
+
+	"github.com/Dostonlv/hackathon-nt/config"
+	_ "github.com/lib/pq"
+)
+
+
+
+func NewConnection(config config.Config) (*sql.DB, error) {
+	dsn := fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		config.Host,
+		config.Port,
+		config.User,
+		config.Password,
+		config.DBName,
+		config.SSLMode,
+	)
+
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("error opening database: %w", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("error connecting to the database: %w", err)
+	}
+
+	// Set connection pool settings
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
+
+	return db, nil
+}
+
+</internal/repository/postgres/connection.go>
+
+<internal/repository/errors.go>
+package repository
+
+import "errors"
+
+var ErrNotFound = errors.New("not found")
+
+</internal/repository/errors.go>
+
+<internal/repository/interfaces.go>
+package repository
+
+import (
+	"context"
+
+	"github.com/Dostonlv/hackathon-nt/internal/models"
+	"github.com/google/uuid"
+)
+
+type UserRepository interface {
+	Create(ctx context.Context, user *models.User) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.User, error)
+	GetByEmail(ctx context.Context, email string) (*models.User, error)
+	GetByUsername(ctx context.Context, username string) (*models.User, error)
+	ExistsByEmail(ctx context.Context, email string) (bool, error)
+	// Update(ctx context.Context, user *models.User) error
+}
+
+type TenderRepository interface {
+	Create(ctx context.Context, tender *models.Tender) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Tender, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	ListByClientID(ctx context.Context, clientID uuid.UUID) ([]models.Tender, error)
+	List(ctx context.Context, filters TenderFilters) ([]models.Tender, error)
+}
+
+type BidRepository interface {
+	Create(ctx context.Context, bid *models.Bid) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Bid, error)
+	ListByTenderID(ctx context.Context, tenderID uuid.UUID, filters BidFilters) ([]models.Bid, error)
+	ListByContractorID(ctx context.Context, contractorID uuid.UUID) ([]models.Bid, error)
+	Update(ctx context.Context, bid *models.Bid) error
+	ListByClientTenderID(ctx context.Context, clientID, tenderID uuid.UUID) ([]models.Bid, error)
+	AwardBidByTenderID(ctx context.Context, clientID, tenderID, bidID uuid.UUID) error
+	DeleteByContractorID(ctx context.Context, contractorID, bidID uuid.UUID) error
+}
+
+type NotificationRepository interface {
+	Create(ctx context.Context, notification *models.Notification) error
+	ListByUserID(ctx context.Context, userID uuid.UUID) ([]models.Notification, error)
+	MarkAsRead(ctx context.Context, id uuid.UUID) error
+}
+
+type TenderFilters struct {
+	Status string
+	Search string
+}
+
+type BidFilters struct {
+	Status      string
+	Search      string
+	MinPrice    *float64
+	MaxPrice    *float64
+	MinDelivery *int
+	MaxDelivery *int
+	SortBy      string
+	SortOrder   string
+}
+
+</internal/repository/interfaces.go>
+
+<internal/api/middleware/ratelimit.go>
+package middleware
+</internal/api/middleware/ratelimit.go>
+
+<internal/api/middleware/auth.go>
+package middleware
+</internal/api/middleware/auth.go>
+
+<internal/api/routes.go>
+package api
+
+import (
+	"net/http"
+	"strings"
+
+	_ "github.com/Dostonlv/hackathon-nt/docs"
+	"github.com/Dostonlv/hackathon-nt/internal/api/handlers"
+	"github.com/Dostonlv/hackathon-nt/internal/service"
+	"github.com/casbin/casbin/v2"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt"
+	"github.com/google/uuid"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+)
+
+// Claims represents the JWT claims structure
+type Claims struct {
+	RolePayload string    `json:"role"`
+	UserID      uuid.UUID `json:"user_id"`
+	jwt.StandardClaims
+}
+
+// AuthorizationMiddleware checks permissions using Casbin with JWT role
+func AuthorizationMiddleware(enforcer *casbin.Enforcer, jwtSecret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Get JWT token from Authorization header
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "Missing token"})
+			c.Abort()
+			return
+		}
+		var jwtString string
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			jwtString = strings.Split(authHeader, "Bearer ")[1]
+		} else {
+			jwtString = authHeader
+		}
+
+		// Parse and validate the token
+		claims := &Claims{}
+		token, err := jwt.ParseWithClaims(jwtString, claims, func(token *jwt.Token) (interface{}, error) {
+			return []byte(jwtSecret), nil
+		})
+
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.Abort()
+			return
+		}
+
+		// Extract role from claims
+		userRole := claims.RolePayload
+		if userRole == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "role not found in token"})
+			c.Abort()
+			return
+		}
+
+		userId := claims.UserID.String()
+		if userId == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user_id not found in token"})
+			c.Abort()
+			return
+		}
+
+		// Get request path and method
+		path := c.Request.URL.Path
+		method := c.Request.Method
+		// Check permission using Casbin
+		allowed, err := enforcer.Enforce(userRole, path, method)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "authorization error"})
+			c.Abort()
+			return
+		}
+
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			c.Abort()
+			return
+		}
+
+		// Store role in context for later use if needed
+		c.Set("userRole", userRole)
+		c.Set("userId", userId)
+		c.Next()
+	}
+}
+
+// NewRouter -.
+// Swagger spec:
+// @title       hackathon
+// @description Backend
+// @version     1.0
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+func SetupRouter(authService *service.AuthService, tenderService *service.TenderService, bidService *service.BidService, enforcer *casbin.Enforcer, jwtSecret string) *gin.Engine {
+	router := gin.Default()
+
+	authHandler := handlers.NewAuthHandler(authService)
+	tenderHandler := handlers.NewTenderHandler(tenderService)
+
+	bidHandler := handlers.NewBidHandler(bidService)
+	// Public routes (no authorization required)
+	router.POST("/register", authHandler.Register)
+	router.POST("/login", authHandler.Login)
+
+	// Protected routes (require authorization)
+	api := router.Group("/api")
+	api.Use(AuthorizationMiddleware(enforcer, jwtSecret))
+	{
+		api.POST("/client/tenders", tenderHandler.CreateTender)
+		api.GET("/client/tenders", tenderHandler.ListTenders)
+		api.PUT("/client/tenders/:id", tenderHandler.UpdateTenderStatus)
+		api.DELETE("/client/tenders/:id", tenderHandler.DeleteTender)
+		api.GET("/client/tenders/:tender_id/bids", bidHandler.GetBidsByClientID)
+		api.POST("/client/tenders/:tender_id/award/:bid_id", bidHandler.AwardBid)
+		api.GET("/client/tenders/filter", tenderHandler.ListTendersFiltering)
+
+		api.POST("/contractor/tenders/:tender_id/bid", bidHandler.CreateBid)
+		api.GET("/contractor/bids", bidHandler.GetBidsByContractorID)
+		api.DELETE("/contractor/bids/:bid_id", bidHandler.DeleteBidByContractorID)
+	}
+
+	// Swagger route
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	return router
+}
+
+</internal/api/routes.go>
+
+<internal/api/handlers/bid.go>
+package handlers
+
+import (
+	"errors"
+	"net/http"
+	"strconv"
+
+	"github.com/Dostonlv/hackathon-nt/internal/repository"
+	"github.com/Dostonlv/hackathon-nt/internal/service"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/k0kubun/pp"
+)
+
+type BidHandler struct {
+	bidService *service.BidService
+}
+
+func NewBidHandler(bidService *service.BidService) *BidHandler {
+	return &BidHandler{
+		bidService: bidService,
+	}
+}
+
+type CreateBidRequest struct {
+	Price        float64 `json:"price"`
+	DeliveryTime int     `json:"delivery_time"`
+	Comments     string  `json:"comments"`
+}
+
+type Bid struct {
+	ID           uuid.UUID `json:"id"`
+	TenderID     uuid.UUID `json:"tender_id"`
+	ContractorID uuid.UUID `json:"contractor_id"`
+	Price        float64   `json:"price"`
+	DeliveryTime int       `json:"delivery_time"`
+	Comments     string    `json:"comments"`
+	Status       string    `json:"status"`
+}
+
+// CreateBid handles the creation of a new bid for a specific tender.
+//
+// @Summary Create a new bid
+// @Description This endpoint allows a contractor to create a new bid for a specified tender. The contractor must provide the bid details in the request body.
+// @Tags bids
+// @Accept json
+// @Produce json
+// @Param tender_id path string true "Tender ID"
+// @Param bid body CreateBidRequest true "Bid details"
+// @Success 201 {object} Bid "Successfully created bid"
+// @Failure 400 {object} ErrorResponse "Invalid tender ID or bad request body"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Security ApiKeyAuth
+// @Router /api/contractor/tenders/{tender_id}/bid [post]
+func (h *BidHandler) CreateBid(c *gin.Context) {
+	tenderID, err := uuid.Parse(c.Param("tender_id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Message: "Tender not found"})
+		return
+	}
+
+	var req CreateBidRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: err.Error()})
+		return
+	}
+
+	if req.Price <= 0 || req.DeliveryTime <= 0 || req.Comments == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Invalid bid data"})
+		return
+	}
+
+	userID, _ := c.Get("userId")
+	contractorID, err := uuid.Parse(userID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Invalid user ID"})
+		return
+	}
+
+	bid, err := h.bidService.CreateBid(c.Request.Context(), service.CreateBidInput{
+		TenderID:     tenderID,
+		ContractorID: contractorID,
+		Price:        req.Price,
+		DeliveryTime: req.DeliveryTime,
+		Comments:     req.Comments,
+	})
+
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidTender) {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Tender is not open for bids"})
+			return
+		}
+		pp.Print(err.Error())
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, bid)
+}
+
+// ListBids retrieves a list of bids for a specific tender.
+//
+// @Summary List bids for a tender
+// @Description This endpoint retrieves a list of bids for a specified tender. The list can be filtered and sorted using query parameters.
+// @Tags bids
+// @Accept json
+// @Produce json
+// @Param tender_id path string true "Tender ID"
+// @Param status query string false "Filter by bid status"
+// @Param search query string false "Search bids by comments"
+// @Param min_price query number false "Minimum bid price"
+// @Param max_price query number false "Maximum bid price"
+// @Param min_delivery_time query int false "Minimum delivery time"
+// @Param max_delivery_time query int false "Maximum delivery time"
+// @Param sort_by query string false "Sort by field"
+// @Param sort_order query string false "Sort order (asc or desc)"
+// @Success 200 {array} Bid "List of bids"
+// @Failure 400 {object} ErrorResponse "Invalid tender ID"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Security ApiKeyAuth
+// @Router /api/contractor/tenders/{tender_id}/bids [get]
+func (h *BidHandler) ListBids(c *gin.Context) {
+	tenderID, err := uuid.Parse(c.Param("tender_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Invalid tender ID"})
+		return
+	}
+
+	filters := repository.BidFilters{
+		Status:      c.Query("status"),
+		Search:      c.Query("search"),
+		MinPrice:    parseFloatQuery(c, "min_price"),
+		MaxPrice:    parseFloatQuery(c, "max_price"),
+		MinDelivery: parseIntQuery(c, "min_delivery_time"),
+		MaxDelivery: parseIntQuery(c, "max_delivery_time"),
+		SortBy:      c.Query("sort_by"),
+		SortOrder:   c.Query("sort_order"),
+	}
+
+	bids, err := h.bidService.ListBids(c.Request.Context(), tenderID, filters)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, bids)
+}
+
+func parseFloatQuery(c *gin.Context, key string) *float64 {
+	if value := c.Query(key); value != "" {
+		if floatValue, err := strconv.ParseFloat(value, 64); err == nil {
+			return &floatValue
+		}
+	}
+	return nil
+}
+
+func parseIntQuery(c *gin.Context, key string) *int {
+	if value := c.Query(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return &intValue
+		}
+	}
+	return nil
+}
+
+// GetBidsByContractorID retrieves a list of bids made by a specific contractor.
+//
+// @Summary Get bids by contractor ID
+// @Description This endpoint retrieves a list of bids made by a specific contractor.
+// @Tags bids
+// @Accept json
+// @Produce json
+// @Param contractor_id path string true "Contractor ID"
+// @Success 200 {array} Bid "List of bids"
+// @Failure 400 {object} ErrorResponse "Invalid contractor ID"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Security ApiKeyAuth
+// @Router /api/contractor/bids [get]
+func (h *BidHandler) GetBidsByContractorID(c *gin.Context) {
+
+	contractorID, _ := c.Get("userId")
+
+	contractorUUID, err := uuid.Parse(contractorID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Invalid contractor ID"})
+		return
+	}
+
+	bids, err := h.bidService.GetBidsByContractorID(c.Request.Context(), contractorUUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, bids)
+}
+
+// GetBidsByClientID retrieves a list of bids made by a specific client.
+//
+// @Summary Get bids by client ID
+// @Description This endpoint retrieves a list of bids made by a specific client for a specified tender.
+// @Tags bids
+// @Accept json
+// @Produce json
+// @Param tender_id path string true "Tender ID"
+// @Success 200 {array} Bid "List of bids"
+// @Failure 400 {object} ErrorResponse "Invalid tender ID or client ID"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Security ApiKeyAuth
+// @Router /api/client/tenders/{tender_id}/bids [get]
+func (h *BidHandler) GetBidsByClientID(c *gin.Context) {
+	tenderID, err := uuid.Parse(c.Param("tender_id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Message: "Tender not found or access denied"})
+		return
+	}
+
+	clientID, _ := c.Get("userId")
+	clientUUID, err := uuid.Parse(clientID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Invalid client ID"})
+		return
+	}
+
+	bids, err := h.bidService.GetBidsByClientID(c.Request.Context(), clientUUID, tenderID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, bids)
+}
+
+// AwardBid awards a specific bid for a tender.
+//
+// @Summary Award a bid
+// @Description This endpoint allows a client to award a specific bid for a specified tender.
+// @Tags bids
+// @Accept json
+// @Produce json
+// @Param tender_id path string true "Tender ID"
+// @Param bid_id path string true "Bid ID"
+// @Success 200 {object} Bid "Successfully awarded bid"
+// @Failure 400 {object} ErrorResponse "Invalid tender ID or bid ID"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Security ApiKeyAuth
+// @Router /api/client/tenders/{tender_id}/award/{bid_id} [post]
+func (h *BidHandler) AwardBid(c *gin.Context) {
+	tenderID, err := uuid.Parse(c.Param("tender_id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Message: "Tender not found or access denied"})
+		return
+	}
+
+	bidID, err := uuid.Parse(c.Param("bid_id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Message: "Bid not found"})
+		return
+	}
+
+	clientID, _ := c.Get("userId")
+	clientUUID, err := uuid.Parse(clientID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Invalid client ID"})
+		return
+	}
+
+	err = h.bidService.AwardBid(c.Request.Context(), clientUUID, tenderID, bidID)
+	if err != nil {
+		if err.Error() == "unauthorized: client does not own the tender" || err.Error() == "bid not found" {
+			c.JSON(http.StatusNotFound, ErrorResponse{Message: "Tender not found or access denied"})
+			return
+		}
+
+		if errors.Is(err, service.ErrInvalidTender) {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Tender is not open for bids"})
+			return
+		}
+		pp.Println(err.Error())
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Bid awarded successfully"})
+}
+
+// DeleteBidByContractorID deletes a specific bid made by a contractor.
+//
+// @Summary Delete a bid by contractor ID
+// @Description This endpoint allows a contractor to delete a specific bid they made.
+// @Tags bids
+// @Accept json
+// @Produce json
+// @Param bid_id path string true "Bid ID"
+// @Success 200 {object} string "Successfully deleted bid"
+// @Failure 400 {object} ErrorResponse "Invalid bid ID or contractor ID"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Security ApiKeyAuth
+// @Router /api/contractor/bids/{bid_id} [delete]
+func (h *BidHandler) DeleteBidByContractorID(c *gin.Context) {
+	bidID, err := uuid.Parse(c.Param("bid_id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Message: "Bid not found or access denied"})
+		return
+	}
+
+	contractorID, _ := c.Get("userId")
+	contractorUUID, err := uuid.Parse(contractorID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Invalid contractor ID"})
+		return
+	}
+
+	err = h.bidService.DeleteBidByContractorID(c.Request.Context(), contractorUUID, bidID)
+	if err != nil {
+		if err.Error() == "unauthorized: contractor does not own the bid" || err.Error() == "bid not found" {
+			c.JSON(http.StatusNotFound, ErrorResponse{Message: "Bid not found or access denied"})
+			return
+		}
+		if errors.Is(err, service.ErrInvalidContractor) {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Bid not found or access denied"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Bid deleted successfully"})
+}
+
+</internal/api/handlers/bid.go>
+
+<internal/api/handlers/tender.go>
+package handlers
+
+import (
+	"net/http"
+	"time"
+
+	"github.com/Dostonlv/hackathon-nt/internal/repository"
+	"github.com/Dostonlv/hackathon-nt/internal/service"
+	"github.com/Dostonlv/hackathon-nt/internal/utils"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+type TenderHandler struct {
+	tenderService *service.TenderService
+}
+
+func NewTenderHandler(tenderService *service.TenderService) *TenderHandler {
+	if tenderService == nil {
+		panic("tenderService cannot be nil")
+	}
+	return &TenderHandler{
+		tenderService: tenderService,
+	}
+}
+
+type CreateTenderRequest struct {
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Deadline    string  `json:"deadline" datetime:"2006-01-02T15:04:05Z07:00"`
+	Budget      float64 `json:"budget" `
+	Attachment  *string `json:"attachment"`
+}
+
+// CreateTender godoc
+// @Summary Create a new tender
+// @Description Create a new tender with the provided details
+// @Tags tenders
+// @Accept json
+// @Produce json
+// @Param tender body CreateTenderRequest true "Tender details"
+// @Success 201 {object} models.Tender
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Security BearerAuth
+// @Router /api/client/tenders [post]
+func (h *TenderHandler) CreateTender(c *gin.Context) {
+	var req CreateTenderRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Missing token"})
+		return
+	}
+
+	if req.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid input"})
+		return
+	}
+
+	if req.Description == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid input"})
+		return
+	}
+
+	if req.Deadline == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid input"})
+		return
+	}
+
+	if req.Budget <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid tender data"})
+		return
+	}
+
+	claims, err := utils.ParseToken(authHeader, []byte("secreeet"))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	if claims.UserID == uuid.Nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	deadline, err := time.Parse(time.RFC3339, req.Deadline)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tender data"})
+		return
+	}
+
+	if time.Now().After(deadline) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Deadline has already passed"})
+		return
+	}
+
+	tender, err := h.tenderService.CreateTender(c.Request.Context(), service.CreateTenderInput{
+		ClientID:    claims.UserID,
+		Title:       req.Title,
+		Description: req.Description,
+		Deadline:    deadline,
+		Budget:      req.Budget,
+		Attachment:  req.Attachment,
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"id": tender.ID, "title": tender.Title})
+}
+
+// ListTenders handles the request to list tenders based on provided filters.
+// @Summary List Tenders
+// @Description Retrieves a list of tenders filtered by status and search query.
+// @Tags tenders
+// @Accept json
+// @Produce json
+// @Param status query string false "Filter tenders by status"
+// @Param search query string false "Search tenders by keyword"
+// @Success 200 {array} []models.Tender "List of tenders"
+// @Failure 500 {object} []models.Tender "Internal Server Error"
+// @Security BearerAuth
+// @Router /api/client/tenders [get]
+func (h *TenderHandler) ListTenders(c *gin.Context) {
+	clientID, _ := c.Get("userId")
+
+	clientUUID, err := uuid.Parse(clientID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid client ID format"})
+		return
+	}
+	tenders, err := h.tenderService.ListTenders(c.Request.Context(), clientUUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, tenders)
+}
+
+type UpdateTenderStatusRequest struct {
+	Status string `json:"status"`
+}
+
+// UpdateTenderStatus godoc
+// @Summary Update the status of a tender
+// @Description Update the status of a tender by its ID
+// @Tags tenders
+// @Accept json
+// @Produce json
+// @Param id path string true "Tender ID"
+// @Param status body UpdateTenderStatusRequest true "New status"
+// @Success 200 {object} models.Tender
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Security BearerAuth
+// @Router /api/client/tenders/{id} [put]
+func (h *TenderHandler) UpdateTenderStatus(c *gin.Context) {
+	var req UpdateTenderStatusRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Status == "" || req.Status != "open" && req.Status != "closed" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid tender status"})
+		return
+	}
+
+	tenderID := c.Param("id")
+	if tenderID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Tender ID is required"})
+		return
+	}
+
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Missing token"})
+		return
+	}
+
+	claims, err := utils.ParseToken(authHeader, []byte("secreeet"))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	if claims.UserID == uuid.Nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	tenderUUID, err := uuid.Parse(tenderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"message": "Tender not found"})
+		return
+	}
+
+	_, err = h.tenderService.UpdateTender(c.Request.Context(), service.UpdateTenderInput{ID: tenderUUID, Status: &req.Status})
+	if err != nil {
+		if err == service.ErrTenderNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Tender not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Tender status updated"})
+}
+
+// GetTenderByID godoc
+// @Summary Get a tender by ID
+// @Description Retrieve a tender by its ID
+// @Tags tenders
+// @Accept json
+// @Produce json
+// @Param id path string true "Tender ID"
+// @Success 200 {object} models.Tender
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Security BearerAuth
+// @Router /api/client/tenders/{id} [get]
+func (h *TenderHandler) GetTenderByID(c *gin.Context) {
+	tenderID := c.Param("id")
+	if tenderID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Tender ID is required"})
+		return
+	}
+
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Missing token"})
+		return
+	}
+
+	claims, err := utils.ParseToken(authHeader, []byte("secreeet"))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	if claims.UserID == uuid.Nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	tenderUUID, err := uuid.Parse(tenderID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tender ID format"})
+		return
+	}
+
+	tender, err := h.tenderService.GetTenderByID(c.Request.Context(), tenderUUID)
+	if err != nil {
+		if err == service.ErrTenderNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"message": "Tender not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, tender)
+}
+
+// DeleteTender godoc
+// @Summary Delete a tender
+// @Description Delete a tender by its ID
+// @Tags tenders
+// @Accept json
+// @Produce json
+// @Param id path string true "Tender ID"
+// @Success 200 {object} string "Tender deleted"
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Security BearerAuth
+// @Router /api/client/tenders/{id} [delete]
+func (h *TenderHandler) DeleteTender(c *gin.Context) {
+	tenderID := c.Param("id")
+	if tenderID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Tender ID is required"})
+		return
+	}
+
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Missing token"})
+		return
+	}
+
+	claims, err := utils.ParseToken(authHeader, []byte("secreeet"))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	if claims.UserID == uuid.Nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	tenderUUID, err := uuid.Parse(tenderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"message": "Tender not found or access denied"})
+		return
+	}
+
+	err = h.tenderService.DeleteTender(c.Request.Context(), tenderUUID, claims.UserID)
+	if err != nil {
+		if err == service.ErrTenderNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"message": "Tender not found or access denied"})
+			return
+		}
+		if err == service.ErrUnauthorized {
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "Unauthorized"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Tender deleted successfully"})
+}
+
+// ListTendersFiltering handles the request to list tenders with filters.
+// @Summary List Tenders with Filters
+// @Description Retrieves a list of tenders filtered by various criteria.
+// @Tags tenders
+// @Accept json
+// @Produce json
+// @Param status query string false "Filter tenders by status"
+// @Param search query string false "Search tenders by keyword"
+// @Success 200 {array} models.Tender "List of tenders"
+// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Router /api/client/tenders/filter [get]
+func (h *TenderHandler) ListTendersFiltering(c *gin.Context) {
+	var filters repository.TenderFilters
+
+	if status := c.Query("status"); status != "" {
+		filters.Status = status
+	}
+	if search := c.Query("search"); search != "" {
+		filters.Search = search
+	}
+
+	tenders, err := h.tenderService.ListTendersFiltering(c.Request.Context(), filters)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, tenders)
+}
+
+</internal/api/handlers/tender.go>
+
+<internal/api/handlers/notfication.go>
+package handlers
+</internal/api/handlers/notfication.go>
+
+<internal/api/handlers/auth.go>
+package handlers
+
+import (
+	"net/http"
+	"strings"
+
+	"github.com/Dostonlv/hackathon-nt/internal/service"
+	"github.com/gin-gonic/gin"
+)
+
+// AuthHandler handles authentication-related requests
+type AuthHandler struct {
+	authService *service.AuthService
+}
+
+// NewAuthHandler creates a new AuthHandler
+func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+	return &AuthHandler{
+		authService: authService,
+	}
+}
+
+// ErrorResponse represents an error response
+type ErrorResponse struct {
+	Message string `json:"message"`
+}
+
+// Register godoc
+// @Summary Register a new user
+// @Description Register a new user with the provided details
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param input body service.RegisterInput true "Register Input"
+// @Success 201 {object} service.AuthResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /register [post]
+func (h *AuthHandler) Register(c *gin.Context) {
+	var input service.RegisterInput
+
+	// Bind JSON input
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Invalid request payload"})
+		return
+	}
+
+	if input.Role != "client" && input.Role != "contractor" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "invalid role"})
+		return
+	}
+
+	// Custom validation logic
+	if input.Email == "" || input.Username == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "username or email cannot be empty"})
+		return
+	}
+
+	// Basic email format validation
+	if !strings.Contains(input.Email, "@") || !strings.Contains(input.Email, ".") {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "invalid email format"})
+		return
+	}
+
+	// Call AuthService to register
+	resp, err := h.authService.Register(c.Request.Context(), input)
+	if err != nil {
+		// Handle specific errors
+		switch err.Error() {
+		case "email already exists":
+			c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Email already exists"})
+		default:
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Failed to register user"})
+		}
+		return
+	}
+
+	// Success response
+	c.JSON(http.StatusCreated, resp)
+}
+
+// Login godoc
+// @Summary Login a user
+// @Description Login a user with the provided credentials
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param input body service.LoginInput true "Login Input"
+// @Success 200 {object} service.AuthResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /login [post]
+func (h *AuthHandler) Login(c *gin.Context) {
+	var input service.LoginInput
+
+	// Bind JSON input
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Invalid request payload"})
+		return
+	}
+
+	if input.Username == "" || input.Password == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Username and password are required"})
+		return
+	}
+
+	// Call AuthService to login
+	resp, err := h.authService.Login(c.Request.Context(), input)
+	if err != nil {
+		// Handle specific errors
+		switch err.Error() {
+		case "invalid credentials":
+			c.JSON(http.StatusUnauthorized, ErrorResponse{Message: "Invalid username or password"})
+		case "user not found":
+			c.JSON(http.StatusNotFound, ErrorResponse{Message: "User not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Failed to login user"})
+		}
+		return
+	}
+
+	// Success response
+	c.JSON(http.StatusOK, resp)
+}
+
+</internal/api/handlers/auth.go>
+
