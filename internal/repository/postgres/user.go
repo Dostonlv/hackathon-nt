@@ -34,7 +34,7 @@ func (r *UserRepo) Create(ctx context.Context, user *models.User) error {
 	)
 	if err != nil {
 		if pgErr, ok := err.(*pq.Error); ok && pgErr.Code == "23505" {
-			return errors.New("user with this email already exists")
+			return err
 		}
 		return err
 	}

@@ -23,6 +23,7 @@ type TenderRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByClientID(ctx context.Context, clientID uuid.UUID) ([]models.Tender, error)
 	List(ctx context.Context, filters TenderFilters) ([]models.Tender, error)
+	GetClientIDByTenderID(ctx context.Context, tenderID uuid.UUID) (uuid.UUID, error)
 }
 
 type BidRepository interface {

@@ -165,3 +165,11 @@ func (s *BidService) DeleteBidByContractorID(ctx context.Context, contractorID, 
 
 	return nil
 }
+
+func (s *BidService) GetClientIDByTenderID(ctx context.Context, tenderID uuid.UUID) (uuid.UUID, error) {
+	clientID, err := s.tenderRepo.GetClientIDByTenderID(ctx, tenderID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return clientID, nil
+}

@@ -341,7 +341,7 @@ const docTemplate = `{
             "post": {
                 "security": [
                     {
-                        "ApiKeyAuth": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "This endpoint allows a client to award a specific bid for a specified tender.",
@@ -397,7 +397,7 @@ const docTemplate = `{
             "get": {
                 "security": [
                     {
-                        "ApiKeyAuth": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "This endpoint retrieves a list of bids made by a specific client for a specified tender.",
@@ -449,7 +449,7 @@ const docTemplate = `{
             "get": {
                 "security": [
                     {
-                        "ApiKeyAuth": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "This endpoint retrieves a list of bids made by a specific contractor.",
@@ -501,7 +501,7 @@ const docTemplate = `{
             "delete": {
                 "security": [
                     {
-                        "ApiKeyAuth": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "This endpoint allows a contractor to delete a specific bid they made.",
@@ -550,7 +550,7 @@ const docTemplate = `{
             "post": {
                 "security": [
                     {
-                        "ApiKeyAuth": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "This endpoint allows a contractor to create a new bid for a specified tender. The contractor must provide the bid details in the request body.",
@@ -608,7 +608,7 @@ const docTemplate = `{
             "get": {
                 "security": [
                     {
-                        "ApiKeyAuth": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "This endpoint retrieves a list of bids for a specified tender. The list can be filtered and sorted using query parameters.",

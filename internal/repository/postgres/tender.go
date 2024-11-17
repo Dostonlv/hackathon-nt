@@ -198,3 +198,17 @@ func (r *TenderRepo) exists(ctx context.Context, id uuid.UUID) (bool, error) {
 	}
 	return true, nil
 }
+
+func (r *TenderRepo) GetClientIDByTenderID(ctx context.Context, tenderID uuid.UUID) (uuid.UUID, error) {
+	query := `SELECT client_id FROM tenders WHERE id = $1`
+
+	var clientID uuid.UUID
+	err := r.db.QueryRowContext(ctx, query, tenderID).Scan(&clientID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return uuid.Nil, repository.ErrNotFound
+		}
+		return uuid.Nil, err
+	}
+	return clientID, nil
+}

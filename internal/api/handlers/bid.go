@@ -7,18 +7,21 @@ import (
 
 	"github.com/Dostonlv/hackathon-nt/internal/repository"
 	"github.com/Dostonlv/hackathon-nt/internal/service"
+	"github.com/Dostonlv/hackathon-nt/internal/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/k0kubun/pp"
 )
 
 type BidHandler struct {
-	bidService *service.BidService
+	bidService          *service.BidService
+	notificationService *utils.NotificationService
 }
 
-func NewBidHandler(bidService *service.BidService) *BidHandler {
+func NewBidHandler(bidService *service.BidService, notificationService *utils.NotificationService) *BidHandler {
 	return &BidHandler{
-		bidService: bidService,
+		bidService:          bidService,
+		notificationService: notificationService,
 	}
 }
 
@@ -50,7 +53,7 @@ type Bid struct {
 // @Success 201 {object} Bid "Successfully created bid"
 // @Failure 400 {object} ErrorResponse "Invalid tender ID or bad request body"
 // @Failure 500 {object} ErrorResponse "Internal server error"
-// @Security ApiKeyAuth
+// @Security BearerAuth
 // @Router /api/contractor/tenders/{tender_id}/bid [post]
 func (h *BidHandler) CreateBid(c *gin.Context) {
 	tenderID, err := uuid.Parse(c.Param("tender_id"))
@@ -90,12 +93,31 @@ func (h *BidHandler) CreateBid(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Tender is not open for bids"})
 			return
 		}
-		pp.Print(err.Error())
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, bid)
+	clientID, err := h.bidService.GetClientIDByTenderID(c.Request.Context(), tenderID)
+	if err != nil {
+		// Log the error but don't fail the bid creation
+		pp.Printf("Failed to get client ID for notification: %v", err)
+	} else {
+		// Send notification to client
+		notification := utils.BidNotification{
+			Type:     "new_bid",
+			TenderID: tenderID,
+			BidID:    bid.ID,
+			Price:    bid.Price,
+			Message:  "New bid received for your tender",
+		}
+		if err := h.notificationService.NotifyNewBid(c.Request.Context(), clientID, notification); err != nil {
+			// Log the error but don't fail the bid creation
+			pp.Printf("Failed to send notification: %v", err)
+		}
+
+	}
+
 }
 
 // ListBids retrieves a list of bids for a specific tender.
@@ -117,7 +139,7 @@ func (h *BidHandler) CreateBid(c *gin.Context) {
 // @Success 200 {array} Bid "List of bids"
 // @Failure 400 {object} ErrorResponse "Invalid tender ID"
 // @Failure 500 {object} ErrorResponse "Internal server error"
-// @Security ApiKeyAuth
+// @Security BearerAuth
 // @Router /api/contractor/tenders/{tender_id}/bids [get]
 func (h *BidHandler) ListBids(c *gin.Context) {
 	tenderID, err := uuid.Parse(c.Param("tender_id"))
@@ -175,7 +197,7 @@ func parseIntQuery(c *gin.Context, key string) *int {
 // @Success 200 {array} Bid "List of bids"
 // @Failure 400 {object} ErrorResponse "Invalid contractor ID"
 // @Failure 500 {object} ErrorResponse "Internal server error"
-// @Security ApiKeyAuth
+// @Security BearerAuth
 // @Router /api/contractor/bids [get]
 func (h *BidHandler) GetBidsByContractorID(c *gin.Context) {
 
@@ -207,7 +229,7 @@ func (h *BidHandler) GetBidsByContractorID(c *gin.Context) {
 // @Success 200 {array} Bid "List of bids"
 // @Failure 400 {object} ErrorResponse "Invalid tender ID or client ID"
 // @Failure 500 {object} ErrorResponse "Internal server error"
-// @Security ApiKeyAuth
+// @Security BearerAuth
 // @Router /api/client/tenders/{tender_id}/bids [get]
 func (h *BidHandler) GetBidsByClientID(c *gin.Context) {
 	tenderID, err := uuid.Parse(c.Param("tender_id"))
@@ -244,7 +266,7 @@ func (h *BidHandler) GetBidsByClientID(c *gin.Context) {
 // @Success 200 {object} Bid "Successfully awarded bid"
 // @Failure 400 {object} ErrorResponse "Invalid tender ID or bid ID"
 // @Failure 500 {object} ErrorResponse "Internal server error"
-// @Security ApiKeyAuth
+// @Security BearerAuth
 // @Router /api/client/tenders/{tender_id}/award/{bid_id} [post]
 func (h *BidHandler) AwardBid(c *gin.Context) {
 	tenderID, err := uuid.Parse(c.Param("tender_id"))
@@ -269,7 +291,7 @@ func (h *BidHandler) AwardBid(c *gin.Context) {
 	err = h.bidService.AwardBid(c.Request.Context(), clientUUID, tenderID, bidID)
 	if err != nil {
 		if err.Error() == "unauthorized: client does not own the tender" || err.Error() == "bid not found" {
-			c.JSON(http.StatusNotFound, ErrorResponse{Message: "Tender not found or access denied"})
+			// c.JSON(http.StatusNotFound, ErrorResponse{Message: "Tender not found or access denied"})
 			return
 		}
 
@@ -277,12 +299,30 @@ func (h *BidHandler) AwardBid(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Tender is not open for bids"})
 			return
 		}
-		pp.Println(err.Error())
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Bid awarded successfully"})
+
+	// Send notification to contractor
+	bid, err := h.bidService.GetBidByID(c.Request.Context(), bidID)
+	if err != nil {
+		pp.Printf("Failed to get bid for notification: %v", err)
+		return
+	} else {
+		notification := utils.BidNotification{
+			Type:     "bid_awarded",
+			TenderID: tenderID,
+			BidID:    bid.ID,
+			Price:    bid.Price,
+			Message:  "Your bid has been awarded",
+		}
+		if err := h.notificationService.NotifyAward(c.Request.Context(), bid.ContractorID, notification); err != nil {
+			pp.Printf("Failed to send notification: %v", err)
+		}
+	}
+
 }
 
 // DeleteBidByContractorID deletes a specific bid made by a contractor.
@@ -296,7 +336,7 @@ func (h *BidHandler) AwardBid(c *gin.Context) {
 // @Success 200 {object} string "Successfully deleted bid"
 // @Failure 400 {object} ErrorResponse "Invalid bid ID or contractor ID"
 // @Failure 500 {object} ErrorResponse "Internal server error"
-// @Security ApiKeyAuth
+// @Security BearerAuth
 // @Router /api/contractor/bids/{bid_id} [delete]
 func (h *BidHandler) DeleteBidByContractorID(c *gin.Context) {
 	bidID, err := uuid.Parse(c.Param("bid_id"))

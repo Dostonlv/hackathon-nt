@@ -7,6 +7,7 @@ import (
 	_ "github.com/Dostonlv/hackathon-nt/docs"
 	"github.com/Dostonlv/hackathon-nt/internal/api/handlers"
 	"github.com/Dostonlv/hackathon-nt/internal/service"
+	"github.com/Dostonlv/hackathon-nt/internal/utils"
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
@@ -25,6 +26,48 @@ type Claims struct {
 // AuthorizationMiddleware checks permissions using Casbin with JWT role
 func AuthorizationMiddleware(enforcer *casbin.Enforcer, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+
+		// Allow WebSocket upgrade requests to pass through
+		if strings.ToLower(c.GetHeader("Upgrade")) == "websocket" {
+			// Get JWT token from Authorization header
+			authHeader := c.GetHeader("Authorization")
+			if authHeader == "" {
+				c.JSON(http.StatusUnauthorized, gin.H{"message": "Missing token"})
+				c.Abort()
+				return
+			}
+			var jwtString string
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				jwtString = strings.Split(authHeader, "Bearer ")[1]
+			} else {
+				jwtString = authHeader
+			}
+
+			// Parse and validate the token
+			claims := &Claims{}
+			token, err := jwt.ParseWithClaims(jwtString, claims, func(token *jwt.Token) (interface{}, error) {
+				return []byte(jwtSecret), nil
+			})
+
+			if err != nil || !token.Valid {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				c.Abort()
+				return
+			}
+
+			userId := claims.UserID.String()
+			if userId == "" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "user_id not found in token"})
+				c.Abort()
+				return
+			}
+
+			// Store user ID in context for later use if needed
+			c.Set("userId", userId)
+			c.Next()
+			return
+		}
+
 		// Get JWT token from Authorization header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -103,8 +146,11 @@ func SetupRouter(authService *service.AuthService, tenderService *service.Tender
 
 	authHandler := handlers.NewAuthHandler(authService)
 	tenderHandler := handlers.NewTenderHandler(tenderService)
+	notificationService := utils.NewNotificationService()
 
-	bidHandler := handlers.NewBidHandler(bidService)
+	bidHandler := handlers.NewBidHandler(bidService, notificationService)
+	wsHandler := handlers.NewWebSocketHandler(notificationService)
+
 	// Public routes (no authorization required)
 	router.POST("/register", authHandler.Register)
 	router.POST("/login", authHandler.Login)
@@ -113,6 +159,7 @@ func SetupRouter(authService *service.AuthService, tenderService *service.Tender
 	api := router.Group("/api")
 	api.Use(AuthorizationMiddleware(enforcer, jwtSecret))
 	{
+		api.GET("/ws", wsHandler.HandleWebSocket)
 		api.POST("/client/tenders", tenderHandler.CreateTender)
 		api.GET("/client/tenders", tenderHandler.ListTenders)
 		api.PUT("/client/tenders/:id", tenderHandler.UpdateTenderStatus)
