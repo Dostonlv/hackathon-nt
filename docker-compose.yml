@@ -4,18 +4,23 @@ services:
   app:
     build: .
     ports:
-      - "8080:8080"
+      - "8888:8888"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
-      - DB_HOST=localhost
+      - DB_HOST=db
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tender_db
-      - JWT_SECRET=your-secret-key
-      - PORT=8080
+      - DB_PORT=5433
+      - DATABASE_URL=postgresql://postgres:postgres@db:5433/tender_db
+      - PORT=8888
     volumes:
       - .:/app
+    restart: unless-stopped
 
   db:
     image: postgres:13
@@ -27,6 +32,12 @@ services:
       - POSTGRES_DB=tender_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:latest
@@ -34,6 +45,12 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
 volumes:
   postgres_data:

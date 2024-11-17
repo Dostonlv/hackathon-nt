@@ -1,11 +1,35 @@
 .PHONY: run_db run test build
 
+APP_NAME=tender-management
+DOCKER_COMPOSE=docker-compose.yml
+
+# Database connection parameters
+DB_USER ?= postgres
+DB_PASSWORD ?= postgres
+DB_NAME ?= tender_db
+DB_HOST ?= localhost
+DB_PORT ?= 5433
+MIGRATION_DIR ?= migrations
+
+# Build connection string
+DB_URL := postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
+
+
+
+.PHONY: run_db run test build
+
 run_db:
 	docker compose up db -d
 	docker compose up redis -d
 
 run:
-	docker compose up --build
+	@echo "Starting services with Docker Compose..."
+	@docker compose -f $(DOCKER_COMPOSE) up -d
+	@sleep 5 # Allow some time for services to start up
+	@echo "Applying database migrations..."
+	@migrate -path $(MIGRATION_DIR) -database "$(DB_URL)" up
+	@echo "Services are running and migrations are applied."
+
 
 test:
 	go test ./...
@@ -21,16 +45,6 @@ clean:
 
 
 
-# Database connection parameters
-DB_USER ?= postgres
-DB_PASSWORD ?= postgres
-DB_NAME ?= tender_db
-DB_HOST ?= localhost
-DB_PORT ?= 5433
-MIGRATION_DIR ?= migrations
-
-# Build connection string
-DB_URL := postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
 
 # Migration tools
 MIGRATE := migrate
