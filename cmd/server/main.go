@@ -63,19 +63,21 @@ func main() {
 	}
 
 	// Initialize repositories and services
-	userRepo := postgres.NewUserRepo(db)
-	authService := service.NewAuthService(userRepo, jwtUtil)
+
 	// Redis connection
 	redisAddr := "localhost:6379"
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
 	})
+	userRepo := postgres.NewUserRepo(db)
+	authService := service.NewAuthService(userRepo, jwtUtil)
 
 	// Pass Redis client to NewTenderRepo
 	tenderService := service.NewTenderService(postgres.NewTenderRepo(db, redisClient))
-	bidService := service.NewBidService(postgres.NewBidRepo(db), postgres.NewTenderRepo(db, redisClient))
+	bidService := service.NewBidService(postgres.NewBidRepo(db, redisClient), postgres.NewTenderRepo(db, redisClient))
+	historyService := service.NewHistoryService(postgres.NewHistoryRepo(db))
 	// Setup router with Casbin enforcer
-	router := api.SetupRouter(authService, tenderService, bidService, enforcer, jwtSecret)
+	router := api.SetupRouter(authService, tenderService, bidService, historyService, enforcer, jwtSecret)
 
 	// Start the server
 	log.Println("Server starting on :8888...")

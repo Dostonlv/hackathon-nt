@@ -11,5 +11,7 @@ p, contractor, /api/contractor/bids, GET
 p, client, /api/client/tenders/*/bids, GET
 p, client, /api/client/tenders/*/award/*, POST
 p, contractor, /api/contractor/bids/*, DELETE
+p, client, /api//users/*/tenders, GET
+p, contractor, /api/users/*/bids, GET
 p, client, /api/ws, GET
 p, client, /api/ws, WS
