@@ -213,6 +213,7 @@ func (h *BidHandler) GetBidsByContractorID(c *gin.Context) {
 
 	bids, err := h.bidService.GetBidsByContractorID(c.Request.Context(), contractorUUID)
 	if err != nil {
+		pp.Println("kirdi")
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: err.Error()})
 		return
 	}
@@ -249,6 +250,7 @@ func (h *BidHandler) GetBidsByClientID(c *gin.Context) {
 
 	bids, err := h.bidService.GetBidsByClientID(c.Request.Context(), clientUUID, tenderID)
 	if err != nil {
+		pp.Println("kirdi")
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: err.Error()})
 		return
 	}

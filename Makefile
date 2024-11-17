@@ -19,7 +19,7 @@ run_db:
 
 run:
 	@echo "Starting services with Docker Compose..."
-	@docker compose -f $(DOCKER_COMPOSE) up -d
+	@docker compose -f $(DOCKER_COMPOSE) up 
 	@sleep 5 # Allow some time for services to start up
 	@echo "Applying database migrations..."
 	@migrate -path $(MIGRATION_DIR) -database "$(DB_URL)" up
