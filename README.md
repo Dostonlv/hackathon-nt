@@ -1,196 +1,105 @@
-[![GitHub Workflow Status (branch)](https://img.shields.io/github/actions/workflow/status/golang-migrate/migrate/ci.yaml?branch=master)](https://github.com/golang-migrate/migrate/actions/workflows/ci.yaml?query=branch%3Amaster)
-[![GoDoc](https://pkg.go.dev/badge/github.com/golang-migrate/migrate)](https://pkg.go.dev/github.com/golang-migrate/migrate/v4)
-[![Coverage Status](https://img.shields.io/coveralls/github/golang-migrate/migrate/master.svg)](https://coveralls.io/github/golang-migrate/migrate?branch=master)
-[![packagecloud.io](https://img.shields.io/badge/deb-packagecloud.io-844fec.svg)](https://packagecloud.io/golang-migrate/migrate?filter=debs)
-[![Docker Pulls](https://img.shields.io/docker/pulls/migrate/migrate.svg)](https://hub.docker.com/r/migrate/migrate/)
-![Supported Go Versions](https://img.shields.io/badge/Go-1.20%2C%201.21-lightgrey.svg)
-[![GitHub Release](https://img.shields.io/github/release/golang-migrate/migrate.svg)](https://github.com/golang-migrate/migrate/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/golang-migrate/migrate/v4)](https://goreportcard.com/report/github.com/golang-migrate/migrate/v4)
+# Tender Management System Documentation
 
-# migrate
+This project implements a RESTful API for managing tenders, bids, and user authentication. It leverages PostgreSQL for data persistence, Redis for caching, and Casbin for authorization. Real-time notifications are implemented using WebSockets.
 
-__Database migrations written in Go. Use as [CLI](#cli-usage) or import as [library](#use-in-your-go-project).__
+## Table of Contents
 
-* Migrate reads migrations from [sources](#migration-sources)
-   and applies them in correct order to a [database](#databases).
-* Drivers are "dumb", migrate glues everything together and makes sure the logic is bulletproof.
-   (Keeps the drivers lightweight, too.)
-* Database drivers don't assume things or try to correct user input. When in doubt, fail.
+- [Architecture](#architecture)
+- [API Endpoints](#api-endpoints)
+- [Authentication](#authentication)
+- [Tenders](#tenders)
+- [Bids](#bids)
+- [Notifications (WebSockets)](#notifications-websockets)
+- [Data Model](#data-model)
+- [Authorization (Casbin)](#authorization-casbin)
+- [Rate Limiting](#rate-limiting)
+- [Caching (Redis)](#caching-redis)
+- [Database Migrations](#database-migrations)
+- [Configuration](#configuration)
+- [Running the Application](#running-the-application)
+- [Dependencies](#dependencies)
 
-Forked from [mattes/migrate](https://github.com/mattes/migrate)
+## Architecture
 
-## Databases
+The application follows a layered architecture:
 
-Database drivers run migrations. [Add a new database?](database/driver.go)
+- **API (internal/api)**: Exposes HTTP endpoints using Gin. Handles request routing, validation, and responses. Swagger documentation is integrated.
+- **Service (internal/service)**: Contains the business logic for managing tenders, bids, and authentication.
+- **Repository (internal/repository)**: Provides an abstraction layer for data access. Implements interfaces for interacting with the database. PostgreSQL is the chosen database.
+- **Models (internal/models)**: Defines the data structures for tenders, bids, users, and notifications.
+- **Utils (internal/utils)**: Contains utility functions like JWT generation/validation, rate limiting, and notification services.
 
-* [PostgreSQL](database/postgres)
-* [PGX v4](database/pgx)
-* [PGX v5](database/pgx/v5)
-* [Redshift](database/redshift)
-* [Ql](database/ql)
-* [Cassandra / ScyllaDB](database/cassandra)
-* [SQLite](database/sqlite)
-* [SQLite3](database/sqlite3) ([todo #165](https://github.com/mattes/migrate/issues/165))
-* [SQLCipher](database/sqlcipher)
-* [MySQL / MariaDB](database/mysql)
-* [Neo4j](database/neo4j)
-* [MongoDB](database/mongodb)
-* [CrateDB](database/crate) ([todo #170](https://github.com/mattes/migrate/issues/170))
-* [Shell](database/shell) ([todo #171](https://github.com/mattes/migrate/issues/171))
-* [Google Cloud Spanner](database/spanner)
-* [CockroachDB](database/cockroachdb)
-* [YugabyteDB](database/yugabytedb)
-* [ClickHouse](database/clickhouse)
-* [Firebird](database/firebird)
-* [MS SQL Server](database/sqlserver)
-* [RQLite](database/rqlite)
+## API Endpoints
 
-### Database URLs
+All API endpoints are prefixed with `/api` and require authentication using JWT (Bearer token) unless otherwise specified.
 
-Database connection strings are specified via URLs. The URL format is driver dependent but generally has the form: `dbdriver://username:password@host:port/dbname?param1=true&param2=false`
+### Authentication
 
-Any [reserved URL characters](https://en.wikipedia.org/wiki/Percent-encoding#Percent-encoding_reserved_characters) need to be escaped. Note, the `%` character also [needs to be escaped](https://en.wikipedia.org/wiki/Percent-encoding#Percent-encoding_the_percent_character)
+- `POST /register`: Registers a new user (client or contractor).
+- `POST /login`: Logs in an existing user and returns a JWT.
 
-Explicitly, the following characters need to be escaped:
-`!`, `#`, `$`, `%`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `/`, `:`, `;`, `=`, `?`, `@`, `[`, `]`
+### Tenders
 
-It's easiest to always run the URL parts of your DB connection URL (e.g. username, password, etc) through an URL encoder. See the example Python snippets below:
+- `POST /api/client/tenders`: Creates a new tender (client role only).
+- `GET /api/client/tenders`: Lists all tenders created by the authenticated client.
+- `GET /api/client/tenders/filter`: Lists all tenders filtered by status or with search.
+- `PUT /api/client/tenders/:id`: Updates the status of a tender (client role only).
+- `DELETE /api/client/tenders/:id`: Deletes a tender (client role only).
+- `GET /api/client/tenders/:tender_id/bids`: Gets all bids for a specific tender created by the client.
+- `POST /api/client/tenders/:tender_id/award/:bid_id`: Award a bid for a specific tender (client role only).
 
-```bash
-$ python3 -c 'import urllib.parse; print(urllib.parse.quote(input("String to encode: "), ""))'
-String to encode: FAKEpassword!#$%&'()*+,/:;=?@[]
-FAKEpassword%21%23%24%25%26%27%28%29%2A%2B%2C%2F%3A%3B%3D%3F%40%5B%5D
-$ python2 -c 'import urllib; print urllib.quote(raw_input("String to encode: "), "")'
-String to encode: FAKEpassword!#$%&'()*+,/:;=?@[]
-FAKEpassword%21%23%24%25%26%27%28%29%2A%2B%2C%2F%3A%3B%3D%3F%40%5B%5D
-$
-```
+### Bids
 
-## Migration Sources
+- `POST /api/contractor/tenders/:tender_id/bid`: Creates a new bid for a tender (contractor role only).
+- `GET /api/contractor/bids`: Lists bids submitted by the authenticated contractor.
+- `DELETE /api/contractor/bids/:bid_id`: Deletes a specific bid by the authenticated contractor.
 
-Source drivers read migrations from local or remote sources. [Add a new source?](source/driver.go)
+## Notifications (WebSockets)
 
-* [Filesystem](source/file) - read from filesystem
-* [io/fs](source/iofs) - read from a Go [io/fs](https://pkg.go.dev/io/fs#FS)
-* [Go-Bindata](source/go_bindata) - read from embedded binary data ([jteeuwen/go-bindata](https://github.com/jteeuwen/go-bindata))
-* [pkger](source/pkger) - read from embedded binary data ([markbates/pkger](https://github.com/markbates/pkger))
-* [GitHub](source/github) - read from remote GitHub repositories
-* [GitHub Enterprise](source/github_ee) - read from remote GitHub Enterprise repositories
-* [Bitbucket](source/bitbucket) - read from remote Bitbucket repositories
-* [Gitlab](source/gitlab) - read from remote Gitlab repositories
-* [AWS S3](source/aws_s3) - read from Amazon Web Services S3
-* [Google Cloud Storage](source/google_cloud_storage) - read from Google Cloud Platform Storage
+- `GET /api/ws`: Establishes a WebSocket connection for real-time notifications (Authentication required).
+    - Clients receive notifications about new bids on their tenders.
+    - Contractors receive notifications about their bid awards.
 
-## CLI usage
+## Data Model
 
-* Simple wrapper around this library.
-* Handles ctrl+c (SIGINT) gracefully.
-* No config search paths, no config files, no magic ENV var injections.
+- **Users**: `id`, `username`, `email`, `password_hash`, `role`, `created_at`, `updated_at`
+- **Tenders**: `id`, `client_id`, `title`, `description`, `deadline`, `budget`, `status`, `attachment`, `created_at`, `updated_at`
+- **Bids**: `id`, `tender_id`, `contractor_id`, `price`, `delivery_time`, `comments`, `status`, `created_at`, `updated_at`
+- **Notifications**: `id`, `user_id`, `message`, `relation_id`, `type`, `read`, `created_at`
 
-__[CLI Documentation](cmd/migrate)__
+## Authorization (Casbin)
 
-### Basic usage
+Casbin is used for authorization. The model and policy are defined in `config/model.conf` and `config/policy.csv`, respectively. The API middleware (AuthorizationMiddleware) enforces the policies based on the user's role and the requested resource.
 
-```bash
-$ migrate -source file://path/to/migrations -database postgres://localhost:5432/database up 2
-```
+## Rate Limiting
 
-### Docker usage
+A simple rate limiter is implemented using `golang.org/x/time/rate`. It limits requests per user to prevent abuse. This is applied in the API middleware.
 
-```bash
-$ docker run -v {{ migration dir }}:/migrations --network host migrate/migrate
-    -path=/migrations/ -database postgres://localhost:5432/database up 2
-```
+## Caching (Redis)
 
-## Use in your Go project
+Redis is used for caching tender lists to improve performance. Cached data is stored with an expiration time.
 
-* API is stable and frozen for this release (v3 & v4).
-* Uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies.
-* To help prevent database corruptions, it supports graceful stops via `GracefulStop chan bool`.
-* Bring your own logger.
-* Uses `io.Reader` streams internally for low memory overhead.
-* Thread-safe and no goroutine leaks.
+## Database Migrations
 
-__[Go Documentation](https://pkg.go.dev/github.com/golang-migrate/migrate/v4)__
+Database migrations are managed using `golang-migrate`. The migration files are located in the `migrations` directory.
 
-```go
-import (
-    "github.com/golang-migrate/migrate/v4"
-    _ "github.com/golang-migrate/migrate/v4/database/postgres"
-    _ "github.com/golang-migrate/migrate/v4/source/github"
-)
+## Configuration
 
-func main() {
-    m, err := migrate.New(
-        "github://mattes:personal-access-token@mattes/migrate_test",
-        "postgres://localhost:5432/database?sslmode=enable")
-    m.Steps(2)
-}
-```
+Database connection details and other configurations are hardcoded in the `cmd/server/main.go` file for simplicity. In a production environment, this should be externalized (e.g., environment variables, configuration files).
 
-Want to use an existing database client?
+## Running the Application
 
-```go
-import (
-    "database/sql"
-    _ "github.com/lib/pq"
-    "github.com/golang-migrate/migrate/v4"
-    "github.com/golang-migrate/migrate/v4/database/postgres"
-    _ "github.com/golang-migrate/migrate/v4/source/file"
-)
+1. Ensure you have PostgreSQL and Redis running.
+2. Run the migrations: `migrate -source file://migrations -database "postgres://postgres:postgres@localhost:5433/tender_db?sslmode=disable" up`
+3. Build and run the application: `go run cmd/server/main.go`
 
-func main() {
-    db, err := sql.Open("postgres", "postgres://localhost:5432/database?sslmode=enable")
-    driver, err := postgres.WithInstance(db, &postgres.Config{})
-    m, err := migrate.NewWithDatabaseInstance(
-        "file:///migrations",
-        "postgres", driver)
-    m.Up() // or m.Step(2) if you want to explicitly set the number of migrations to run
-}
-```
+## Dependencies
 
-## Getting started
-
-Go to [getting started](GETTING_STARTED.md)
-
-## Tutorials
-
-* [CockroachDB](database/cockroachdb/TUTORIAL.md)
-* [PostgreSQL](database/postgres/TUTORIAL.md)
-
-(more tutorials to come)
-
-## Migration files
-
-Each migration has an up and down migration. [Why?](FAQ.md#why-two-separate-files-up-and-down-for-a-migration)
-
-```bash
-1481574547_create_users_table.up.sql
-1481574547_create_users_table.down.sql
-```
-
-[Best practices: How to write migrations.](MIGRATIONS.md)
-
-## Coming from another db migration tool?
-
-Check out [migradaptor](https://github.com/musinit/migradaptor/).
-*Note: migradaptor is not affliated or supported by this project*
-
-## Versions
-
-Version | Supported? | Import | Notes
---------|------------|--------|------
-**master** | :white_check_mark: | `import "github.com/golang-migrate/migrate/v4"` | New features and bug fixes arrive here first |
-**v4** | :white_check_mark: | `import "github.com/golang-migrate/migrate/v4"` | Used for stable releases |
-**v3** | :x: | `import "github.com/golang-migrate/migrate"` (with package manager) or `import "gopkg.in/golang-migrate/migrate.v3"` (not recommended) | **DO NOT USE** - No longer supported |
-
-## Development and Contributing
-
-Yes, please! [`Makefile`](Makefile) is your friend,
-read the [development guide](CONTRIBUTING.md).
-
-Also have a look at the [FAQ](FAQ.md).
-
----
-
-Looking for alternatives? [https://awesome-go.com/#database](https://awesome-go.com/#database).
+- Gin
+- GORM
+- PostgreSQL driver
+- Redis client
+- Casbin
+- JWT library
+- Swagger
+- Golang-migrate
