@@ -54,12 +54,16 @@ type TenderFilters struct {
 }
 
 type BidFilters struct {
-	Status      string
-	Search      string
-	MinPrice    *float64
-	MaxPrice    *float64
-	MinDelivery *int
-	MaxDelivery *int
-	SortBy      string
-	SortOrder   string
+	Status          string
+	Search          string
+	Price           *float64
+	DeliveryTime    *int
+	MinDeliveryTime *int
+	MaxDeliveryTime *int
+	MinPrice        *float64
+	MaxPrice        *float64
+	MinDelivery     *int
+	MaxDelivery     *int
+	SortBy          string
+	SortOrder       string
 }

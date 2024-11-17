@@ -149,14 +149,16 @@ func (h *BidHandler) ListBids(c *gin.Context) {
 	}
 
 	filters := repository.BidFilters{
-		Status:      c.Query("status"),
-		Search:      c.Query("search"),
-		MinPrice:    parseFloatQuery(c, "min_price"),
-		MaxPrice:    parseFloatQuery(c, "max_price"),
-		MinDelivery: parseIntQuery(c, "min_delivery_time"),
-		MaxDelivery: parseIntQuery(c, "max_delivery_time"),
-		SortBy:      c.Query("sort_by"),
-		SortOrder:   c.Query("sort_order"),
+		Status:       c.Query("status"),
+		Search:       c.Query("search"),
+		Price:        parseFloatQuery(c, "price"),
+		DeliveryTime: parseIntQuery(c, "delivery_time"),
+		MinPrice:     parseFloatQuery(c, "min_price"),
+		MaxPrice:     parseFloatQuery(c, "max_price"),
+		MinDelivery:  parseIntQuery(c, "min_delivery_time"),
+		MaxDelivery:  parseIntQuery(c, "max_delivery_time"),
+		SortBy:       c.Query("sort_by"),
+		SortOrder:    c.Query("sort_order"),
 	}
 
 	bids, err := h.bidService.ListBids(c.Request.Context(), tenderID, filters)

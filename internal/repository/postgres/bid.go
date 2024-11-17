@@ -71,6 +71,73 @@ func (r *BidRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Bid, error
 	return &b, nil
 }
 
+func (r *BidRepo) ListByTenderIDWithFilters(ctx context.Context, tenderID uuid.UUID, filters repository.BidFilters) ([]models.Bid, error) {
+	// Check if the data is available in the cache
+	cacheKey := fmt.Sprintf("bids:tender:%s:price:%s:delivery_time:%s", tenderID.String(), filters.Price, filters.DeliveryTime)
+	cachedData, err := r.redis.Get(ctx, cacheKey).Result()
+	if err == nil {
+		// Data found in cache, unmarshal and return
+		var bids []models.Bid
+		err = json.Unmarshal([]byte(cachedData), &bids)
+		if err != nil {
+			return nil, err
+		}
+		return bids, nil
+	} else if err != redis.Nil {
+		// Error occurred while accessing cache
+		return nil, err
+	}
+	query := `
+		SELECT id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
+		FROM bids
+		WHERE tender_id = $1
+		AND ($2::float8 IS NULL OR price >= $2)
+		AND ($3::float8 IS NULL OR price <= $3)
+		AND ($4::interval IS NULL OR delivery_time >= $4)
+		AND ($5::interval IS NULL OR delivery_time <= $5)
+	`
+	if filters.SortBy != "" {
+		query += " ORDER BY " + filters.SortBy
+		if filters.SortOrder == "desc" {
+			query += " DESC"
+		}
+	}
+	rows, err := r.db.QueryContext(ctx, query, tenderID, filters.MinPrice, filters.MaxPrice, filters.MinDeliveryTime, filters.MaxDeliveryTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var bids []models.Bid
+	for rows.Next() {
+		var b models.Bid
+		err := rows.Scan(
+			&b.ID,
+			&b.TenderID,
+			&b.ContractorID,
+			&b.Price,
+			&b.DeliveryTime,
+			&b.Comments,
+			&b.Status,
+			&b.CreatedAt,
+			&b.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		bids = append(bids, b)
+	}
+	// Store the fetched data in cache
+	dataBytes, err := json.Marshal(bids)
+	if err != nil {
+		return nil, err
+	}
+	err = r.redis.Set(ctx, cacheKey, dataBytes, time.Hour).Err()
+	if err != nil {
+		return nil, err
+	}
+	return bids, nil
+}
+
 func (r *BidRepo) ListByTenderID(ctx context.Context, tenderID uuid.UUID, filters repository.BidFilters) ([]models.Bid, error) {
 	// Check if the data is available in the cache
 	cacheKey := fmt.Sprintf("bids:tender:%s", tenderID.String())
