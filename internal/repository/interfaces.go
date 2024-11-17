@@ -13,7 +13,6 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
 	GetByUsername(ctx context.Context, username string) (*models.User, error)
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
-	// Update(ctx context.Context, user *models.User) error
 }
 
 type TenderRepository interface {

@@ -6,6 +6,7 @@ import (
 
 	_ "github.com/Dostonlv/hackathon-nt/docs"
 	"github.com/Dostonlv/hackathon-nt/internal/api/handlers"
+	"github.com/Dostonlv/hackathon-nt/internal/api/middleware"
 	"github.com/Dostonlv/hackathon-nt/internal/service"
 	"github.com/Dostonlv/hackathon-nt/internal/utils"
 	"github.com/casbin/casbin/v2"
@@ -109,8 +110,6 @@ func AuthorizationMiddleware(enforcer *casbin.Enforcer, jwtSecret string) gin.Ha
 			return
 		}
 
-		utils.GetRateLimiter(userId).Wait(c)
-
 		// Get request path and method
 		path := c.Request.URL.Path
 		method := c.Request.Method
@@ -146,6 +145,7 @@ func AuthorizationMiddleware(enforcer *casbin.Enforcer, jwtSecret string) gin.Ha
 func SetupRouter(authService *service.AuthService, tenderService *service.TenderService, bidService *service.BidService, historyService *service.HistoryService, enforcer *casbin.Enforcer, jwtSecret string) *gin.Engine {
 	router := gin.Default()
 
+	bidLimiter := middleware.NewBidRateLimiter()
 	authHandler := handlers.NewAuthHandler(authService)
 	tenderHandler := handlers.NewTenderHandler(tenderService)
 	notificationService := utils.NewNotificationService()
@@ -169,7 +169,7 @@ func SetupRouter(authService *service.AuthService, tenderService *service.Tender
 		api.POST("/client/tenders/:tender_id/award/:bid_id", bidHandler.AwardBid)
 		api.GET("/client/tenders/filter", tenderHandler.ListTendersFiltering)
 
-		api.POST("/contractor/tenders/:tender_id/bid", bidHandler.CreateBid)
+		api.POST("/contractor/tenders/:tender_id/bid", bidLimiter.BidRateLimitMiddleware(jwtSecret), bidHandler.CreateBid)
 		api.GET("/contractor/bids", bidHandler.GetBidsByContractorID)
 		api.DELETE("/contractor/bids/:bid_id", bidHandler.DeleteBidByContractorID)
 
