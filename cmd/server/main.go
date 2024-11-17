@@ -62,7 +62,6 @@ func main() {
 		log.Fatal("Failed to save Casbin policies: ", err)
 	}
 
-	// Initialize repositories and services
 
 	// Redis connection
 	redisAddr := "localhost:6379"

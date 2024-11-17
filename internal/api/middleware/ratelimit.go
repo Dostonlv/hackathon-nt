@@ -10,12 +10,12 @@ import (
 	"github.com/golang-jwt/jwt"
 )
 
-// BidRateLimiter contractor user larning bid submission so'rovlarini cheklash uchun
+
 type BidRateLimiter struct {
 	mu       sync.RWMutex
-	requests map[string]*bidRequests // user ID ga bog'langan so'rovlar
-	limit    int                     // Maksimal so'rovlar soni (5)
-	window   time.Duration           // Vaqt oralig'i (1 minut)
+	requests map[string]*bidRequests
+	limit    int                     
+	window   time.Duration          
 }
 
 type Claims struct {
@@ -25,28 +25,28 @@ type Claims struct {
 }
 
 type bidRequests struct {
-	count     int       // So'rovlar soni
-	startTime time.Time // Birinchi so'rov vaqti
+	count     int       
+	startTime time.Time 
 }
 
-// NewBidRateLimiter creates a new rate limiter for bid submissions
+
 func NewBidRateLimiter() *BidRateLimiter {
 	limiter := &BidRateLimiter{
 		requests: make(map[string]*bidRequests),
-		limit:    5,           // minutiga 5 ta so'rov
-		window:   time.Minute, // 1 minutlik oyna
+		limit:    5,           
+		window:   time.Minute,
 	}
 
-	// Eski yozuvlarni tozalash uchun goroutine ishga tushirish
+
 	go limiter.cleanupLoop()
 
 	return limiter
 }
 
-// BidRateLimitMiddleware bid submission endpointi uchun Gin middleware
+
 func (rl *BidRateLimiter) BidRateLimitMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Faqat POST so'rovlarni cheklash
+
 		if c.Request.Method != http.MethodPost {
 			c.Next()
 			return
@@ -65,7 +65,7 @@ func (rl *BidRateLimiter) BidRateLimitMiddleware(jwtSecret string) gin.HandlerFu
 			jwtString = authHeader
 		}
 
-		// Parse and validate the token
+
 		claims := &Claims{}
 		token, err := jwt.ParseWithClaims(jwtString, claims, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
@@ -85,7 +85,7 @@ func (rl *BidRateLimiter) BidRateLimitMiddleware(jwtSecret string) gin.HandlerFu
 			return
 		}
 
-		// Check if user role is "contractor"
+
 		if userRole != "contractor" {
 
 			c.Next()
@@ -112,7 +112,7 @@ func (rl *BidRateLimiter) BidRateLimitMiddleware(jwtSecret string) gin.HandlerFu
 	}
 }
 
-// allowBidSubmission checks if the contractor can submit another bid
+
 func (rl *BidRateLimiter) allowBidSubmission(userID string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
@@ -128,14 +128,14 @@ func (rl *BidRateLimiter) allowBidSubmission(userID string) bool {
 		return true
 	}
 
-	// Vaqt oynasi tugagan bo'lsa, qayta boshlash
+
 	if now.Sub(req.startTime) > rl.window {
 		req.count = 1
 		req.startTime = now
 		return true
 	}
 
-	// Limitni tekshirish
+
 	if req.count < rl.limit {
 		req.count++
 		return true
@@ -143,7 +143,7 @@ func (rl *BidRateLimiter) allowBidSubmission(userID string) bool {
 	return false
 }
 
-// cleanupLoop removes expired entries periodically
+
 func (rl *BidRateLimiter) cleanupLoop() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
