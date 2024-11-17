@@ -25,18 +25,28 @@ type CreateBidInput struct {
 }
 
 type BidService struct {
-	bidRepo repository.BidRepository
+	bidRepo    repository.BidRepository
+	tenderRepo repository.TenderRepository
 }
 
-func NewBidService(
-	bidRepo repository.BidRepository,
-) *BidService {
+func NewBidService(bidRepo repository.BidRepository, tenderRepo repository.TenderRepository) *BidService {
 	return &BidService{
-		bidRepo: bidRepo,
+		bidRepo:    bidRepo,
+		tenderRepo: tenderRepo,
 	}
 }
 
 func (s *BidService) CreateBid(ctx context.Context, input CreateBidInput) (*models.Bid, error) {
+	// Check if tender exists
+	tender, err := s.tenderRepo.GetByID(ctx, input.TenderID)
+	if err != nil {
+		return nil, err
+	}
+
+	if tender.Status != models.TenderStatusOpen {
+		return nil, ErrInvalidTender
+	}
+
 	bid := &models.Bid{
 		ID:           uuid.New(),
 		TenderID:     input.TenderID,
@@ -44,7 +54,7 @@ func (s *BidService) CreateBid(ctx context.Context, input CreateBidInput) (*mode
 		Price:        input.Price,
 		DeliveryTime: input.DeliveryTime,
 		Comments:     input.Comments,
-		Status:       "pending", // Initial status
+		Status:       "open",
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -89,4 +99,77 @@ func (s *BidService) UpdateBidStatus(ctx context.Context, bidID uuid.UUID, statu
 	bid.UpdatedAt = time.Now()
 
 	return s.bidRepo.Update(ctx, bid)
+}
+func (s *BidService) GetBidsByContractorID(ctx context.Context, contractorID uuid.UUID) ([]models.Bid, error) {
+	bids, err := s.bidRepo.ListByContractorID(ctx, contractorID)
+	if err != nil {
+		return nil, err
+	}
+	return bids, nil
+}
+
+func (s *BidService) GetBidsByClientID(ctx context.Context, clientID, tenderID uuid.UUID) ([]models.Bid, error) {
+	bids, err := s.bidRepo.ListByClientTenderID(ctx, clientID, tenderID)
+	if err != nil {
+		return nil, err
+	}
+	return bids, nil
+}
+
+func (s *BidService) AwardBid(ctx context.Context, clientID, tenderID, bidID uuid.UUID) error {
+	// Check if tender exists
+	tender, err := s.tenderRepo.GetByID(ctx, tenderID)
+	if err != nil {
+		return err
+	}
+
+	if tender.Status != models.TenderStatusOpen {
+		return ErrInvalidTender
+	}
+
+	// Check if bid exists
+	bid, err := s.GetBidByID(ctx, bidID)
+	if err != nil {
+		return err
+	}
+
+	if bid.TenderID != tenderID {
+		return ErrInvalidTender
+	}
+
+	// Award the bid
+	err = s.bidRepo.AwardBidByTenderID(ctx, clientID, tenderID, bidID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *BidService) DeleteBidByContractorID(ctx context.Context, contractorID, bidID uuid.UUID) error {
+	// Check if bid exists
+	bid, err := s.GetBidByID(ctx, bidID)
+	if err != nil {
+		return err
+	}
+
+	if bid.ContractorID != contractorID {
+		return ErrInvalidContractor
+	}
+
+	// Delete the bid
+	err = s.bidRepo.DeleteByContractorID(ctx, contractorID, bidID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *BidService) GetClientIDByTenderID(ctx context.Context, tenderID uuid.UUID) (uuid.UUID, error) {
+	clientID, err := s.tenderRepo.GetClientIDByTenderID(ctx, tenderID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return clientID, nil
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/Dostonlv/hackathon-nt/internal/utils"
 	"github.com/casbin/casbin/v2"
 	fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
+	"github.com/go-redis/redis/v8"
 	_ "github.com/lib/pq"
 )
 
@@ -64,14 +65,21 @@ func main() {
 	// Initialize repositories and services
 	userRepo := postgres.NewUserRepo(db)
 	authService := service.NewAuthService(userRepo, jwtUtil)
-	tenderService := service.NewTenderService(postgres.NewTenderRepo(db))
+	// Redis connection
+	redisAddr := "localhost:6379"
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
 
+	// Pass Redis client to NewTenderRepo
+	tenderService := service.NewTenderService(postgres.NewTenderRepo(db, redisClient))
+	bidService := service.NewBidService(postgres.NewBidRepo(db), postgres.NewTenderRepo(db, redisClient))
 	// Setup router with Casbin enforcer
-	router := api.SetupRouter(authService, tenderService, enforcer, jwtSecret)
+	router := api.SetupRouter(authService, tenderService, bidService, enforcer, jwtSecret)
 
 	// Start the server
-	log.Println("Server starting on :8080...")
-	if err := router.Run(":8080"); err != nil {
+	log.Println("Server starting on :8888...")
+	if err := router.Run(":8888"); err != nil {
 		log.Fatal("Failed to start server: ", err)
 	}
 }

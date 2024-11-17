@@ -71,7 +71,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		case "email already exists":
 			c.JSON(http.StatusBadRequest, ErrorResponse{Message: "Email already exists"})
 		default:
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Failed to register user"})
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "Failed to register user" + err.Error()})
 		}
 		return
 	}

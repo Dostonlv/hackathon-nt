@@ -8,7 +8,7 @@ CREATE TABLE tenders (
     deadline TIMESTAMP WITH TIME ZONE NOT NULL,
     budget DECIMAL(15, 2) NOT NULL,
     status tender_status DEFAULT 'open',
-    file_url VARCHAR(512),
+    attachment VARCHAR(512),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT budget_positive CHECK (budget > 0)
@@ -24,7 +24,7 @@ CREATE TABLE bids (
     price DECIMAL(15, 2) NOT NULL,
     delivery_time INTEGER NOT NULL, -- in days
     comments TEXT,
-    status VARCHAR(50) DEFAULT 'pending',
+    status VARCHAR(50) DEFAULT 'open',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT price_positive CHECK (price > 0),

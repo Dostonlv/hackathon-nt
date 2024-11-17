@@ -2,6 +2,7 @@
 
 run_db:
 	docker compose up db -d
+	docker compose up redis -d
 
 run:
 	docker compose up --build

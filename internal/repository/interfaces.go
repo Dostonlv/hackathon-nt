@@ -19,10 +19,11 @@ type UserRepository interface {
 type TenderRepository interface {
 	Create(ctx context.Context, tender *models.Tender) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Tender, error)
-	List(ctx context.Context, filters TenderFilters) ([]models.Tender, error)
-	Update(ctx context.Context, tender *models.Tender) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByClientID(ctx context.Context, clientID uuid.UUID) ([]models.Tender, error)
+	List(ctx context.Context, filters TenderFilters) ([]models.Tender, error)
+	GetClientIDByTenderID(ctx context.Context, tenderID uuid.UUID) (uuid.UUID, error)
 }
 
 type BidRepository interface {
@@ -31,6 +32,9 @@ type BidRepository interface {
 	ListByTenderID(ctx context.Context, tenderID uuid.UUID, filters BidFilters) ([]models.Bid, error)
 	ListByContractorID(ctx context.Context, contractorID uuid.UUID) ([]models.Bid, error)
 	Update(ctx context.Context, bid *models.Bid) error
+	ListByClientTenderID(ctx context.Context, clientID, tenderID uuid.UUID) ([]models.Bid, error)
+	AwardBidByTenderID(ctx context.Context, clientID, tenderID, bidID uuid.UUID) error
+	DeleteByContractorID(ctx context.Context, contractorID, bidID uuid.UUID) error
 }
 
 type NotificationRepository interface {

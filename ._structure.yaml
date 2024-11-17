@@ -1,0 +1,118 @@
+.:
+  - path: /config
+    type: directory
+    contents:
+    - path: /config/config.go
+      type: file
+    - path: /config/model.conf
+      type: file
+    - path: /config/policy.csv
+      type: file
+  - path: /LICENSE
+    type: file
+  - path: /Makefile
+    type: file
+  - path: /docker-compose.yml
+    type: file
+  - path: /migrations
+    type: directory
+    contents:
+    - path: /migrations/02_create_tenders.down.sql
+      type: file
+    - path: /migrations/01_create_users.up.sql
+      type: file
+    - path: /migrations/01_create_users.down.sql
+      type: file
+    - path: /migrations/02_create_tenders.up.sql
+      type: file
+  - path: /go.mod
+    type: file
+  - path: /README.md
+    type: file
+  - path: /cmd
+    type: directory
+    contents:
+    - path: /cmd/server
+      type: directory
+      contents:
+      - path: /cmd/server/main.go
+        type: file
+  - path: /internal
+    type: directory
+    contents:
+    - path: /internal/service
+      type: directory
+      contents:
+      - path: /internal/service/bid.go
+        type: file
+      - path: /internal/service/tender.go
+        type: file
+      - path: /internal/service/notification.go
+        type: file
+      - path: /internal/service/auth.go
+        type: file
+    - path: /internal/utils
+      type: directory
+      contents:
+      - path: /internal/utils/jwt.go
+        type: file
+      - path: /internal/utils/validation.go
+        type: file
+    - path: /internal/models
+      type: directory
+      contents:
+      - path: /internal/models/bid.go
+        type: file
+      - path: /internal/models/tender.go
+        type: file
+      - path: /internal/models/user.go
+        type: file
+      - path: /internal/models/notification.go
+        type: file
+    - path: /internal/repository
+      type: directory
+      contents:
+      - path: /internal/repository/postgres
+        type: directory
+        contents:
+        - path: /internal/repository/postgres/bid.go
+          type: file
+        - path: /internal/repository/postgres/tender.go
+          type: file
+        - path: /internal/repository/postgres/user.go
+          type: file
+        - path: /internal/repository/postgres/notification.go
+          type: file
+        - path: /internal/repository/postgres/connection.go
+          type: file
+      - path: /internal/repository/errors.go
+        type: file
+      - path: /internal/repository/interfaces.go
+        type: file
+    - path: /internal/api
+      type: directory
+      contents:
+      - path: /internal/api/middleware
+        type: directory
+        contents:
+        - path: /internal/api/middleware/ratelimit.go
+          type: file
+        - path: /internal/api/middleware/auth.go
+          type: file
+      - path: /internal/api/routes.go
+        type: file
+      - path: /internal/api/handlers
+        type: directory
+        contents:
+        - path: /internal/api/handlers/bid.go
+          type: file
+        - path: /internal/api/handlers/tender.go
+          type: file
+        - path: /internal/api/handlers/notfication.go
+          type: file
+        - path: /internal/api/handlers/auth.go
+          type: file
+  - path: /Dockerfile
+    type: file
+  - path: /go.sum
+    type: file
