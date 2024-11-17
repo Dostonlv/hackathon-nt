@@ -1,26 +1,21 @@
 .PHONY: run_db run test build
-
 APP_NAME=tender-management
 DOCKER_COMPOSE=docker-compose.yml
-
 # Database connection parameters
 DB_USER ?= postgres
 DB_PASSWORD ?= postgres
 DB_NAME ?= tender_db
 DB_HOST ?= localhost
-DB_PORT ?= 5433
+DB_PORT ?= 5432
 MIGRATION_DIR ?= migrations
 
 # Build connection string
 DB_URL := postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
 
-
-
-.PHONY: run_db run test build
-
 run_db:
 	docker compose up db -d
 	docker compose up redis -d
+
 
 run:
 	@echo "Starting services with Docker Compose..."

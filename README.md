@@ -40,14 +40,10 @@ All API endpoints are prefixed with `/api` and require JSON formatted requests a
 ```
     make run_db
 ```
-2. Migrate db (required migrate cli)
-```
-    make migrate-up
-```
 
-3. Run application
+2. Run application
 ```
-go run cmd/server/main.go
+make run
 ```
 
 

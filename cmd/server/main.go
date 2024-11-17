@@ -35,7 +35,7 @@ func initializeCasbin() (*casbin.Enforcer, error) {
 
 func main() {
 	// Database connection
-	connStr := "postgres://postgres:postgres@localhost:5433/tender_db?sslmode=disable"
+	connStr := "postgres://postgres:postgres@db:5432/tender_db?sslmode=disable"
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		log.Fatal(err)
@@ -61,7 +61,6 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to save Casbin policies: ", err)
 	}
-
 
 	// Redis connection
 	redisAddr := "localhost:6379"
