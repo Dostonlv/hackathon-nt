@@ -32,8 +32,12 @@ func AuthorizationMiddleware(enforcer *casbin.Enforcer, jwtSecret string) gin.Ha
 			c.Abort()
 			return
 		}
-
-		jwtString := strings.Split(authHeader, "Bearer ")[1]
+		var jwtString string
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			jwtString = strings.Split(authHeader, "Bearer ")[1]
+		} else {
+			jwtString = authHeader
+		}
 
 		// Parse and validate the token
 		claims := &Claims{}
@@ -115,6 +119,7 @@ func SetupRouter(authService *service.AuthService, tenderService *service.Tender
 		api.DELETE("/client/tenders/:id", tenderHandler.DeleteTender)
 		api.GET("/client/tenders/:tender_id/bids", bidHandler.GetBidsByClientID)
 		api.POST("/client/tenders/:tender_id/award/:bid_id", bidHandler.AwardBid)
+		api.GET("/client/tenders/filter", tenderHandler.ListTendersFiltering)
 
 		api.POST("/contractor/tenders/:tender_id/bid", bidHandler.CreateBid)
 		api.GET("/contractor/bids", bidHandler.GetBidsByContractorID)

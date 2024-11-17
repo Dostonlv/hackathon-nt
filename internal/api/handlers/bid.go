@@ -293,7 +293,7 @@ func (h *BidHandler) AwardBid(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param bid_id path string true "Bid ID"
-// @Success 200 {object} gin.H "Successfully deleted bid"
+// @Success 200 {object} string "Successfully deleted bid"
 // @Failure 400 {object} ErrorResponse "Invalid bid ID or contractor ID"
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Security ApiKeyAuth

@@ -125,8 +125,9 @@ func (h *TenderHandler) CreateTender(c *gin.Context) {
 // @Produce json
 // @Param status query string false "Filter tenders by status"
 // @Param search query string false "Search tenders by keyword"
-// @Success 200 {array} repository.Tender "List of tenders"
+// @Success 200 {array} []models.Tender "List of tenders"
 // @Failure 500 {object} []models.Tender "Internal Server Error"
+// @Security BearerAuth
 // @Router /api/client/tenders [get]
 func (h *TenderHandler) ListTenders(c *gin.Context) {
 	clientID, _ := c.Get("userId")
@@ -280,7 +281,7 @@ func (h *TenderHandler) GetTenderByID(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Tender ID"
-// @Success 200 {object} gin.H{"message": "Tender deleted"}
+// @Success 200 {object} string "Tender deleted"
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
@@ -341,8 +342,6 @@ func (h *TenderHandler) DeleteTender(c *gin.Context) {
 // @Produce json
 // @Param status query string false "Filter tenders by status"
 // @Param search query string false "Search tenders by keyword"
-// @Param minBudget query number false "Minimum budget"
-// @Param maxBudget query number false "Maximum budget"
 // @Success 200 {array} models.Tender "List of tenders"
 // @Failure 500 {object} ErrorResponse "Internal Server Error"
 // @Router /api/client/tenders/filter [get]

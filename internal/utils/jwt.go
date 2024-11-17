@@ -72,8 +72,12 @@ func (j *JWTUtil) ParseToken(tokenString string) (*Claims, error) {
 }
 
 func ParseToken(tokenString string, secretKey []byte) (*Claims, error) {
-
-	jwtString := strings.Split(tokenString, "Bearer ")[1]
+	var jwtString string
+	if strings.HasPrefix(tokenString, "Bearer ") {
+		jwtString = strings.Split(tokenString, "Bearer ")[1]
+	} else {
+		jwtString = tokenString
+	}
 
 	token, err := jwt.ParseWithClaims(jwtString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		return secretKey, nil

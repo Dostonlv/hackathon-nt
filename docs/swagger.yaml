@@ -1,11 +1,57 @@
 definitions:
+  handlers.Bid:
+    properties:
+      comments:
+        type: string
+      contractor_id:
+        type: string
+      delivery_time:
+        type: integer
+      id:
+        type: string
+      price:
+        type: number
+      status:
+        type: string
+      tender_id:
+        type: string
+    type: object
+  handlers.CreateBidRequest:
+    properties:
+      comments:
+        type: string
+      delivery_time:
+        type: integer
+      price:
+        type: number
+    type: object
+  handlers.CreateTenderRequest:
+    properties:
+      attachment:
+        type: string
+      budget:
+        type: number
+      deadline:
+        type: string
+      description:
+        type: string
+      title:
+        type: string
+    type: object
   handlers.ErrorResponse:
     properties:
       message:
         type: string
     type: object
+  handlers.UpdateTenderStatusRequest:
+    properties:
+      status:
+        type: string
+    type: object
   models.Tender:
     properties:
+      attachment:
+        type: string
       budget:
         type: number
       client_id:
@@ -15,8 +61,6 @@ definitions:
       deadline:
         type: string
       description:
-        type: string
-      file_url:
         type: string
       id:
         type: string
@@ -106,37 +150,53 @@ info:
   title: hackathon
   version: "1.0"
 paths:
-  /api/tenders:
+  /api/client/tenders:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of tenders filtered by status and search query.
+      parameters:
+      - description: Filter tenders by status
+        in: query
+        name: status
+        type: string
+      - description: Search tenders by keyword
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of tenders
+          schema:
+            items:
+              items:
+                $ref: '#/definitions/models.Tender'
+              type: array
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            items:
+              $ref: '#/definitions/models.Tender'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List Tenders
+      tags:
+      - tenders
     post:
       consumes:
-      - multipart/form-data
-      description: Create a new tender with the provided details and a PDF file
+      - application/json
+      description: Create a new tender with the provided details
       parameters:
-      - description: Title of the tender
-        in: formData
-        name: title
+      - description: Tender details
+        in: body
+        name: tender
         required: true
-        type: string
-      - description: Description of the tender
-        in: formData
-        name: description
-        required: true
-        type: string
-      - description: Deadline for the tender
-        in: formData
-        name: deadline
-        required: true
-        type: string
-      - description: Budget for the tender
-        in: formData
-        name: budget
-        required: true
-        type: number
-      - description: PDF file for the tender
-        in: formData
-        name: file
-        required: true
-        type: file
+        schema:
+          $ref: '#/definitions/handlers.CreateTenderRequest'
       produces:
       - application/json
       responses:
@@ -157,6 +217,385 @@ paths:
       summary: Create a new tender
       tags:
       - tenders
+  /api/client/tenders/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a tender by its ID
+      parameters:
+      - description: Tender ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Tender deleted
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a tender
+      tags:
+      - tenders
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a tender by its ID
+      parameters:
+      - description: Tender ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Tender'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a tender by ID
+      tags:
+      - tenders
+    put:
+      consumes:
+      - application/json
+      description: Update the status of a tender by its ID
+      parameters:
+      - description: Tender ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New status
+        in: body
+        name: status
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateTenderStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Tender'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update the status of a tender
+      tags:
+      - tenders
+  /api/client/tenders/{tender_id}/award/{bid_id}:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint allows a client to award a specific bid for a specified
+        tender.
+      parameters:
+      - description: Tender ID
+        in: path
+        name: tender_id
+        required: true
+        type: string
+      - description: Bid ID
+        in: path
+        name: bid_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully awarded bid
+          schema:
+            $ref: '#/definitions/handlers.Bid'
+        "400":
+          description: Invalid tender ID or bid ID
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Award a bid
+      tags:
+      - bids
+  /api/client/tenders/{tender_id}/bids:
+    get:
+      consumes:
+      - application/json
+      description: This endpoint retrieves a list of bids made by a specific client
+        for a specified tender.
+      parameters:
+      - description: Tender ID
+        in: path
+        name: tender_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of bids
+          schema:
+            items:
+              $ref: '#/definitions/handlers.Bid'
+            type: array
+        "400":
+          description: Invalid tender ID or client ID
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get bids by client ID
+      tags:
+      - bids
+  /api/client/tenders/filter:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of tenders filtered by various criteria.
+      parameters:
+      - description: Filter tenders by status
+        in: query
+        name: status
+        type: string
+      - description: Search tenders by keyword
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of tenders
+          schema:
+            items:
+              $ref: '#/definitions/models.Tender'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List Tenders with Filters
+      tags:
+      - tenders
+  /api/contractor/bids:
+    get:
+      consumes:
+      - application/json
+      description: This endpoint retrieves a list of bids made by a specific contractor.
+      parameters:
+      - description: Contractor ID
+        in: path
+        name: contractor_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of bids
+          schema:
+            items:
+              $ref: '#/definitions/handlers.Bid'
+            type: array
+        "400":
+          description: Invalid contractor ID
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get bids by contractor ID
+      tags:
+      - bids
+  /api/contractor/bids/{bid_id}:
+    delete:
+      consumes:
+      - application/json
+      description: This endpoint allows a contractor to delete a specific bid they
+        made.
+      parameters:
+      - description: Bid ID
+        in: path
+        name: bid_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully deleted bid
+          schema:
+            type: string
+        "400":
+          description: Invalid bid ID or contractor ID
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete a bid by contractor ID
+      tags:
+      - bids
+  /api/contractor/tenders/{tender_id}/bid:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint allows a contractor to create a new bid for a specified
+        tender. The contractor must provide the bid details in the request body.
+      parameters:
+      - description: Tender ID
+        in: path
+        name: tender_id
+        required: true
+        type: string
+      - description: Bid details
+        in: body
+        name: bid
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateBidRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Successfully created bid
+          schema:
+            $ref: '#/definitions/handlers.Bid'
+        "400":
+          description: Invalid tender ID or bad request body
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Create a new bid
+      tags:
+      - bids
+  /api/contractor/tenders/{tender_id}/bids:
+    get:
+      consumes:
+      - application/json
+      description: This endpoint retrieves a list of bids for a specified tender.
+        The list can be filtered and sorted using query parameters.
+      parameters:
+      - description: Tender ID
+        in: path
+        name: tender_id
+        required: true
+        type: string
+      - description: Filter by bid status
+        in: query
+        name: status
+        type: string
+      - description: Search bids by comments
+        in: query
+        name: search
+        type: string
+      - description: Minimum bid price
+        in: query
+        name: min_price
+        type: number
+      - description: Maximum bid price
+        in: query
+        name: max_price
+        type: number
+      - description: Minimum delivery time
+        in: query
+        name: min_delivery_time
+        type: integer
+      - description: Maximum delivery time
+        in: query
+        name: max_delivery_time
+        type: integer
+      - description: Sort by field
+        in: query
+        name: sort_by
+        type: string
+      - description: Sort order (asc or desc)
+        in: query
+        name: sort_order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of bids
+          schema:
+            items:
+              $ref: '#/definitions/handlers.Bid'
+            type: array
+        "400":
+          description: Invalid tender ID
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: List bids for a tender
+      tags:
+      - bids
   /login:
     post:
       consumes:
