@@ -2,6 +2,7 @@ package utils
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Dostonlv/hackathon-nt/internal/models"
@@ -71,7 +72,10 @@ func (j *JWTUtil) ParseToken(tokenString string) (*Claims, error) {
 }
 
 func ParseToken(tokenString string, secretKey []byte) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+
+	jwtString := strings.Split(tokenString, "Bearer ")[1]
+
+	token, err := jwt.ParseWithClaims(jwtString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		return secretKey, nil
 	})
 

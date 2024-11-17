@@ -35,7 +35,7 @@ type CreateTenderInput struct {
 	Description string
 	Deadline    time.Time
 	Budget      float64
-	FileURL     *string
+	Attachment  *string
 }
 
 func (s *TenderService) validateCreateTenderInput(input CreateTenderInput) error {
@@ -59,10 +59,6 @@ func (s *TenderService) validateCreateTenderInput(input CreateTenderInput) error
 
 // CreateTender creates a new tender
 func (s *TenderService) CreateTender(ctx context.Context, input CreateTenderInput) (*models.Tender, error) {
-	if err := s.validateCreateTenderInput(input); err != nil {
-		return nil, errors.Join(ErrInvalidInput, err)
-	}
-
 	tender := &models.Tender{
 		ID:          uuid.New(),
 		ClientID:    input.ClientID,
@@ -70,7 +66,7 @@ func (s *TenderService) CreateTender(ctx context.Context, input CreateTenderInpu
 		Description: input.Description,
 		Deadline:    input.Deadline,
 		Budget:      input.Budget,
-		FileURL:     input.FileURL,
+		Attachment:  input.Attachment,
 		Status:      models.TenderStatusOpen,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
@@ -84,28 +80,13 @@ func (s *TenderService) CreateTender(ctx context.Context, input CreateTenderInpu
 	return tender, nil
 }
 
-func (s *TenderService) ListTenders(ctx context.Context, filters repository.TenderFilters) ([]models.Tender, error) {
-	// Validate status if provided
-	if filters.Status != "" {
-		validStatuses := map[string]bool{
-			string(models.TenderStatusOpen):    true,
-			string(models.TenderStatusClosed):  true,
-			string(models.TenderStatusAwarded): true,
-		}
-		if !validStatuses[filters.Status] {
-			return nil, errors.Join(ErrInvalidInput, errors.New("invalid status filter"))
-		}
-	}
-
-	return s.repo.List(ctx, repository.TenderFilters{
-		Status: filters.Status,
-		Search: filters.Search,
-	})
+func (s *TenderService) ListTenders(ctx context.Context, clientID uuid.UUID) ([]models.Tender, error) {
+	return s.repo.ListByClientID(ctx, clientID)
 }
 
 func (s *TenderService) GetTenderByID(ctx context.Context, id uuid.UUID) (*models.Tender, error) {
 	if id == uuid.Nil {
-		return nil, errors.Join(ErrInvalidInput, errors.New("invalid tender ID"))
+		return nil, errors.Join(ErrInvalidInput, errors.New("tender not found"))
 	}
 
 	tender, err := s.repo.GetByID(ctx, id)
@@ -120,14 +101,8 @@ func (s *TenderService) GetTenderByID(ctx context.Context, id uuid.UUID) (*model
 }
 
 type UpdateTenderInput struct {
-	ID          uuid.UUID
-	ClientID    uuid.UUID // for authorization
-	Title       *string
-	Description *string
-	Deadline    *time.Time
-	Budget      *float64
-	FileURL     *string
-	Status      *string
+	ID     uuid.UUID
+	Status *string
 }
 
 func (s *TenderService) UpdateTender(ctx context.Context, input UpdateTenderInput) (*models.Tender, error) {
@@ -145,44 +120,6 @@ func (s *TenderService) UpdateTender(ctx context.Context, input UpdateTenderInpu
 		return nil, err
 	}
 
-	// Check authorization
-	if tender.ClientID != input.ClientID {
-		return nil, ErrUnauthorized
-	}
-
-	// Update fields if provided
-	if input.Title != nil {
-		if *input.Title == "" {
-			return nil, errors.Join(ErrInvalidInput, errors.New("title cannot be empty"))
-		}
-		tender.Title = *input.Title
-	}
-
-	if input.Description != nil {
-		if *input.Description == "" {
-			return nil, errors.Join(ErrInvalidInput, errors.New("description cannot be empty"))
-		}
-		tender.Description = *input.Description
-	}
-
-	if input.Deadline != nil {
-		if input.Deadline.Before(time.Now()) {
-			return nil, errors.Join(ErrInvalidInput, errors.New("deadline must be in the future"))
-		}
-		tender.Deadline = *input.Deadline
-	}
-
-	if input.Budget != nil {
-		if *input.Budget <= 0 {
-			return nil, errors.Join(ErrInvalidInput, errors.New("budget must be greater than zero"))
-		}
-		tender.Budget = *input.Budget
-	}
-
-	if input.FileURL != nil {
-		tender.FileURL = input.FileURL
-	}
-
 	if input.Status != nil {
 		newStatus := models.TenderStatus(*input.Status)
 		if !newStatus.IsValid() {
@@ -194,7 +131,7 @@ func (s *TenderService) UpdateTender(ctx context.Context, input UpdateTenderInpu
 	tender.UpdatedAt = time.Now()
 
 	// Save updates
-	err = s.repo.Update(ctx, tender)
+	err = s.repo.UpdateStatus(ctx, input.ID, string(tender.Status))
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrTenderNotFound
@@ -225,4 +162,8 @@ func (s *TenderService) DeleteTender(ctx context.Context, tenderID, clientID uui
 	}
 
 	return s.repo.Delete(ctx, tenderID)
+}
+
+func (s *TenderService) ListTendersFiltering(ctx context.Context, filters repository.TenderFilters) ([]models.Tender, error) {
+	return s.repo.List(ctx, filters)
 }

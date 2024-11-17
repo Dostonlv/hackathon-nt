@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/Dostonlv/hackathon-nt/internal/models"
 	"github.com/Dostonlv/hackathon-nt/internal/repository"
@@ -160,5 +161,99 @@ func (r *BidRepo) Update(ctx context.Context, bid *models.Bid) error {
 		bid.Status,
 		bid.UpdatedAt,
 	)
+	return err
+}
+
+func (r *BidRepo) ListByClientTenderID(ctx context.Context, clientID, tenderID uuid.UUID) ([]models.Bid, error) {
+	query := `
+		SELECT b.id, b.tender_id, b.contractor_id, b.price, b.delivery_time, b.comments, b.status, b.created_at, b.updated_at
+		FROM bids b
+		INNER JOIN tenders t ON b.tender_id = t.id
+		WHERE t.client_id = $1 AND b.tender_id = $2
+	`
+	rows, err := r.db.QueryContext(ctx, query, clientID, tenderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bids []models.Bid
+	for rows.Next() {
+		var b models.Bid
+		err := rows.Scan(
+			&b.ID,
+			&b.TenderID,
+			&b.ContractorID,
+			&b.Price,
+			&b.DeliveryTime,
+			&b.Comments,
+			&b.Status,
+			&b.CreatedAt,
+			&b.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		bids = append(bids, b)
+	}
+	return bids, nil
+}
+
+func (r *BidRepo) AwardBidByTenderID(ctx context.Context, clientID, tenderID, bidID uuid.UUID) error {
+	// Check if the tender belongs to the client
+	var existingClientID uuid.UUID
+	query := `
+		SELECT client_id
+		FROM tenders
+		WHERE id = $1
+	`
+	err := r.db.QueryRowContext(ctx, query, tenderID).Scan(&existingClientID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("tender not found")
+		}
+		return err
+	}
+
+	if existingClientID != clientID {
+		return fmt.Errorf("unauthorized: client does not own the tender")
+	}
+
+	// Award the bid
+	query = `
+		UPDATE bids
+		SET status = 'awarded'
+		WHERE id = $1 AND tender_id = $2
+	`
+	_, err = r.db.ExecContext(ctx, query, bidID, tenderID)
+	return err
+}
+
+func (r *BidRepo) DeleteByContractorID(ctx context.Context, contractorID, bidID uuid.UUID) error {
+	// Check if the bid belongs to the contractor
+	var existingContractorID uuid.UUID
+	query := `
+		SELECT contractor_id
+		FROM bids
+		WHERE id = $1
+	`
+	err := r.db.QueryRowContext(ctx, query, bidID).Scan(&existingContractorID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("bid not found")
+		}
+		return err
+	}
+
+	if existingContractorID != contractorID {
+		return fmt.Errorf("unauthorized: contractor does not own the bid")
+	}
+
+	// Delete the bid
+	query = `
+		DELETE FROM bids
+		WHERE id = $1 AND contractor_id = $2
+	`
+	_, err = r.db.ExecContext(ctx, query, bidID, contractorID)
 	return err
 }

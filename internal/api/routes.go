@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	_ "github.com/Dostonlv/hackathon-nt/docs"
 	"github.com/Dostonlv/hackathon-nt/internal/api/handlers"
@@ -9,14 +10,15 @@ import (
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
-	"github.com/k0kubun/pp"
+	"github.com/google/uuid"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // Claims represents the JWT claims structure
 type Claims struct {
-	RolePayload string `json:"role"`
+	RolePayload string    `json:"role"`
+	UserID      uuid.UUID `json:"user_id"`
 	jwt.StandardClaims
 }
 
@@ -26,26 +28,16 @@ func AuthorizationMiddleware(enforcer *casbin.Enforcer, jwtSecret string) gin.Ha
 		// Get JWT token from Authorization header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "authorization header is required"})
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "Missing token"})
 			c.Abort()
 			return
 		}
 
-		pp.Println(authHeader)
-
-		// Extract the token from the "Bearer <token>" format
-		// tokenParts := strings.Split(authHeader, " ")
-		// if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-		// 	c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header format"})
-		// 	c.Abort()
-		// 	return
-		// }
-
-		// tokenString := tokenParts[1]
+		jwtString := strings.Split(authHeader, "Bearer ")[1]
 
 		// Parse and validate the token
 		claims := &Claims{}
-		token, err := jwt.ParseWithClaims(authHeader, claims, func(token *jwt.Token) (interface{}, error) {
+		token, err := jwt.ParseWithClaims(jwtString, claims, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
 		})
 
@@ -63,10 +55,16 @@ func AuthorizationMiddleware(enforcer *casbin.Enforcer, jwtSecret string) gin.Ha
 			return
 		}
 
+		userId := claims.UserID.String()
+		if userId == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user_id not found in token"})
+			c.Abort()
+			return
+		}
+
 		// Get request path and method
 		path := c.Request.URL.Path
 		method := c.Request.Method
-
 		// Check permission using Casbin
 		allowed, err := enforcer.Enforce(userRole, path, method)
 		if err != nil {
@@ -83,6 +81,7 @@ func AuthorizationMiddleware(enforcer *casbin.Enforcer, jwtSecret string) gin.Ha
 
 		// Store role in context for later use if needed
 		c.Set("userRole", userRole)
+		c.Set("userId", userId)
 		c.Next()
 	}
 }
@@ -95,11 +94,13 @@ func AuthorizationMiddleware(enforcer *casbin.Enforcer, jwtSecret string) gin.Ha
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
-func SetupRouter(authService *service.AuthService, tenderService *service.TenderService, enforcer *casbin.Enforcer, jwtSecret string) *gin.Engine {
+func SetupRouter(authService *service.AuthService, tenderService *service.TenderService, bidService *service.BidService, enforcer *casbin.Enforcer, jwtSecret string) *gin.Engine {
 	router := gin.Default()
 
 	authHandler := handlers.NewAuthHandler(authService)
 	tenderHandler := handlers.NewTenderHandler(tenderService)
+
+	bidHandler := handlers.NewBidHandler(bidService)
 	// Public routes (no authorization required)
 	router.POST("/register", authHandler.Register)
 	router.POST("/login", authHandler.Login)
@@ -108,11 +109,16 @@ func SetupRouter(authService *service.AuthService, tenderService *service.Tender
 	api := router.Group("/api")
 	api.Use(AuthorizationMiddleware(enforcer, jwtSecret))
 	{
-		api.POST("/tenders", tenderHandler.CreateTender)
-		// Add your protected routes here
-		// Example:
-		// api.GET("/users", userHandler.GetUsers)
-		// api.POST("/users", userHandler.CreateUser)
+		api.POST("/client/tenders", tenderHandler.CreateTender)
+		api.GET("/client/tenders", tenderHandler.ListTenders)
+		api.PUT("/client/tenders/:id", tenderHandler.UpdateTenderStatus)
+		api.DELETE("/client/tenders/:id", tenderHandler.DeleteTender)
+		api.GET("/client/tenders/:tender_id/bids", bidHandler.GetBidsByClientID)
+		api.POST("/client/tenders/:tender_id/award/:bid_id", bidHandler.AwardBid)
+
+		api.POST("/contractor/tenders/:tender_id/bid", bidHandler.CreateBid)
+		api.GET("/contractor/bids", bidHandler.GetBidsByContractorID)
+		api.DELETE("/contractor/bids/:bid_id", bidHandler.DeleteBidByContractorID)
 	}
 
 	// Swagger route

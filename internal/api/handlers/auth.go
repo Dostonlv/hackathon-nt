@@ -124,5 +124,3 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Success response
 	c.JSON(http.StatusOK, resp)
 }
-
-

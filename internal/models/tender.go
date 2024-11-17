@@ -30,7 +30,7 @@ type Tender struct {
 	Deadline    time.Time    `json:"deadline" db:"deadline"`
 	Budget      float64      `json:"budget" db:"budget"`
 	Status      TenderStatus `json:"status" db:"status"`
-	FileURL     *string      `json:"file_url,omitempty" db:"file_url"`
+	Attachment  *string      `json:"attachment,omitempty" db:"attachment"`
 	CreatedAt   time.Time    `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time    `json:"updated_at" db:"updated_at"`
 }

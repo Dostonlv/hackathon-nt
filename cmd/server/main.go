@@ -65,13 +65,13 @@ func main() {
 	userRepo := postgres.NewUserRepo(db)
 	authService := service.NewAuthService(userRepo, jwtUtil)
 	tenderService := service.NewTenderService(postgres.NewTenderRepo(db))
-
+	bidService := service.NewBidService(postgres.NewBidRepo(db), postgres.NewTenderRepo(db))
 	// Setup router with Casbin enforcer
-	router := api.SetupRouter(authService, tenderService, enforcer, jwtSecret)
+	router := api.SetupRouter(authService, tenderService, bidService, enforcer, jwtSecret)
 
 	// Start the server
-	log.Println("Server starting on :8080...")
-	if err := router.Run(":8080"); err != nil {
+	log.Println("Server starting on :8888...")
+	if err := router.Run(":8888"); err != nil {
 		log.Fatal("Failed to start server: ", err)
 	}
 }
