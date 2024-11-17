@@ -10,6 +10,7 @@ import (
 	"github.com/Dostonlv/hackathon-nt/internal/utils"
 	"github.com/casbin/casbin/v2"
 	fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
+	"github.com/go-redis/redis/v8"
 	_ "github.com/lib/pq"
 )
 
@@ -64,8 +65,15 @@ func main() {
 	// Initialize repositories and services
 	userRepo := postgres.NewUserRepo(db)
 	authService := service.NewAuthService(userRepo, jwtUtil)
-	tenderService := service.NewTenderService(postgres.NewTenderRepo(db))
-	bidService := service.NewBidService(postgres.NewBidRepo(db), postgres.NewTenderRepo(db))
+	// Redis connection
+	redisAddr := "localhost:6379"
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+
+	// Pass Redis client to NewTenderRepo
+	tenderService := service.NewTenderService(postgres.NewTenderRepo(db, redisClient))
+	bidService := service.NewBidService(postgres.NewBidRepo(db), postgres.NewTenderRepo(db, redisClient))
 	// Setup router with Casbin enforcer
 	router := api.SetupRouter(authService, tenderService, bidService, enforcer, jwtSecret)
 

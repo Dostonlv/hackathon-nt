@@ -291,7 +291,7 @@ func (h *BidHandler) AwardBid(c *gin.Context) {
 	err = h.bidService.AwardBid(c.Request.Context(), clientUUID, tenderID, bidID)
 	if err != nil {
 		if err.Error() == "unauthorized: client does not own the tender" || err.Error() == "bid not found" {
-			// c.JSON(http.StatusNotFound, ErrorResponse{Message: "Tender not found or access denied"})
+			c.JSON(http.StatusNotFound, ErrorResponse{Message: "Tender not found or access denied"})
 			return
 		}
 

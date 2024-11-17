@@ -109,6 +109,8 @@ func AuthorizationMiddleware(enforcer *casbin.Enforcer, jwtSecret string) gin.Ha
 			return
 		}
 
+		utils.GetRateLimiter(userId).Wait(c)
+
 		// Get request path and method
 		path := c.Request.URL.Path
 		method := c.Request.Method

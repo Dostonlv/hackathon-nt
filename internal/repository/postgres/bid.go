@@ -219,6 +219,25 @@ func (r *BidRepo) AwardBidByTenderID(ctx context.Context, clientID, tenderID, bi
 		return fmt.Errorf("unauthorized: client does not own the tender")
 	}
 
+	// Check if the bid belongs to the tender
+	var existingTenderID uuid.UUID
+	query = `
+		SELECT tender_id
+		FROM bids
+		WHERE id = $1
+	`
+	err = r.db.QueryRowContext(ctx, query, bidID).Scan(&existingTenderID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("bid not found")
+		}
+		return err
+	}
+
+	if existingTenderID != tenderID {
+		return fmt.Errorf("unauthorized: bid does not belong to the tender")
+	}
+
 	// Award the bid
 	query = `
 		UPDATE bids
