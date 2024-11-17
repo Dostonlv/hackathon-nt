@@ -43,6 +43,11 @@ type NotificationRepository interface {
 	MarkAsRead(ctx context.Context, id uuid.UUID) error
 }
 
+type HistoryRepository interface {
+	GetTenderHistory(userID uuid.UUID) ([]models.Tender, error)
+	GetBidHistory(userID uuid.UUID) ([]models.Bid, error)
+}
+
 type TenderFilters struct {
 	Status string
 	Search string

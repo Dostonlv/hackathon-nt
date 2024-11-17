@@ -3,19 +3,23 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/Dostonlv/hackathon-nt/internal/models"
 	"github.com/Dostonlv/hackathon-nt/internal/repository"
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 )
 
 type BidRepo struct {
-	db *sql.DB
+	db    *sql.DB
+	redis *redis.Client
 }
 
-func NewBidRepo(db *sql.DB) *BidRepo {
-	return &BidRepo{db: db}
+func NewBidRepo(db *sql.DB, redisClient *redis.Client) *BidRepo {
+	return &BidRepo{db: db, redis: redisClient}
 }
 
 func (r *BidRepo) Create(ctx context.Context, bid *models.Bid) error {
@@ -68,6 +72,22 @@ func (r *BidRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Bid, error
 }
 
 func (r *BidRepo) ListByTenderID(ctx context.Context, tenderID uuid.UUID, filters repository.BidFilters) ([]models.Bid, error) {
+	// Check if the data is available in the cache
+	cacheKey := fmt.Sprintf("bids:tender:%s", tenderID.String())
+	cachedData, err := r.redis.Get(ctx, cacheKey).Result()
+	if err == nil {
+		// Data found in cache, unmarshal and return
+		var bids []models.Bid
+		err = json.Unmarshal([]byte(cachedData), &bids)
+		if err != nil {
+			return nil, err
+		}
+		return bids, nil
+	} else if err != redis.Nil {
+		// Error occurred while accessing cache
+		return nil, err
+	}
+
 	query := `
 		SELECT id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
 		FROM bids
@@ -108,10 +128,38 @@ func (r *BidRepo) ListByTenderID(ctx context.Context, tenderID uuid.UUID, filter
 		}
 		bids = append(bids, b)
 	}
+
+	// Store the fetched data in cache
+	dataBytes, err := json.Marshal(bids)
+	if err != nil {
+		return nil, err
+	}
+	err = r.redis.Set(ctx, cacheKey, dataBytes, time.Hour).Err()
+	if err != nil {
+		return nil, err
+	}
+
 	return bids, nil
 }
 
 func (r *BidRepo) ListByContractorID(ctx context.Context, contractorID uuid.UUID) ([]models.Bid, error) {
+	// Check if the data is available in the cache
+	cacheKey := fmt.Sprintf("bids:contractor:%s", contractorID.String())
+	cachedData, err := r.redis.Get(ctx, cacheKey).Result()
+	if err == nil {
+		// Data found in cache, unmarshal and return
+		var bids []models.Bid
+		err = json.Unmarshal([]byte(cachedData), &bids)
+		if err != nil {
+			return nil, err
+		}
+		return bids, nil
+	} else if err != redis.Nil {
+		// Error occurred while accessing cache
+		return nil, err
+	}
+
+	// Data not found in cache, fetch from database
 	query := `
 		SELECT id, tender_id, contractor_id, price, delivery_time, comments, status, created_at, updated_at
 		FROM bids
@@ -142,6 +190,17 @@ func (r *BidRepo) ListByContractorID(ctx context.Context, contractorID uuid.UUID
 		}
 		bids = append(bids, b)
 	}
+
+	// Store the fetched data in cache
+	dataBytes, err := json.Marshal(bids)
+	if err != nil {
+		return nil, err
+	}
+	err = r.redis.Set(ctx, cacheKey, dataBytes, time.Hour).Err()
+	if err != nil {
+		return nil, err
+	}
+
 	return bids, nil
 }
 

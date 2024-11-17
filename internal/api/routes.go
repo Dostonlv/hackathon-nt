@@ -143,16 +143,15 @@ func AuthorizationMiddleware(enforcer *casbin.Enforcer, jwtSecret string) gin.Ha
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
-func SetupRouter(authService *service.AuthService, tenderService *service.TenderService, bidService *service.BidService, enforcer *casbin.Enforcer, jwtSecret string) *gin.Engine {
+func SetupRouter(authService *service.AuthService, tenderService *service.TenderService, bidService *service.BidService, historyService *service.HistoryService, enforcer *casbin.Enforcer, jwtSecret string) *gin.Engine {
 	router := gin.Default()
 
 	authHandler := handlers.NewAuthHandler(authService)
 	tenderHandler := handlers.NewTenderHandler(tenderService)
 	notificationService := utils.NewNotificationService()
-
 	bidHandler := handlers.NewBidHandler(bidService, notificationService)
 	wsHandler := handlers.NewWebSocketHandler(notificationService)
-
+	historyHandler := handlers.NewHistoryHandler(historyService)
 	// Public routes (no authorization required)
 	router.POST("/register", authHandler.Register)
 	router.POST("/login", authHandler.Login)
@@ -173,6 +172,9 @@ func SetupRouter(authService *service.AuthService, tenderService *service.Tender
 		api.POST("/contractor/tenders/:tender_id/bid", bidHandler.CreateBid)
 		api.GET("/contractor/bids", bidHandler.GetBidsByContractorID)
 		api.DELETE("/contractor/bids/:bid_id", bidHandler.DeleteBidByContractorID)
+
+		api.GET("/users/:id/tenders", historyHandler.GetTenderHistory)
+		api.GET("/users/:id/bids", historyHandler.GetBidHistory)
 	}
 
 	// Swagger route
